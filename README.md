@@ -1,47 +1,16 @@
-# Mall Billing System - Unified Checkout
+# React + Vite
 
-A Web-Based and Hardware-Ready Smart Mall Shopping and Billing Platform.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-## Project Structure
+Currently, two official plugins are available:
 
-This project follows the structure outlined in the project report:
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-\`\`\`text
-mall-billing-system/
-├── frontend/             # React.js Customer and Staff web interfaces
-│   ├── src/
-│   │   ├── components/   # Reusable UI components
-│   │   ├── pages/        # Main application views (Customer, Checkout, Dashboard)
-│   │   ├── services/     # API integration services
-│   │   ├── scanner/      # Barcode scanning logic
-│   │   ├── cart/         # Unified cart state management
-│   │   └── dashboard/    # Manager dashboard widgets
-├── backend/              # Node.js + Express.js APIs and business logic
-│   ├── src/
-│   │   ├── controllers/  # Request handlers
-│   │   ├── routes/       # API route definitions
-│   │   ├── models/       # Data models
-│   │   ├── services/     # Core business logic
-│   │   ├── middleware/   # Custom Express middleware
-│   │   ├── websocket/    # Real-time event handlers
-│   │   └── payments/     # Payment gateway integrations
-│   ├── server.js         # Entry point for the backend
-├── database/             # Database schemas, migrations, and seeds
-│   ├── schema/
-│   ├── migrations/
-│   └── seed/
-├── hardware/             # IoT integration for physical smart carts (Future Scope)
-│   ├── smart-cart/
-│   ├── scanner/
-│   └── rfid/
-└── docs/                 # Project documentation
-    ├── architecture/
-    └── api/
-\`\`\`
+## React Compiler
 
-## Running the MVP Locally
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-1. **Start Backend**: Navigate to `backend/` and run `node server.js`
-2. **Start Frontend**: Navigate to `frontend/` and run `npm run dev`
+## Expanding the Oxlint configuration
 
-Access the application at `http://localhost:5173`.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
