@@ -1,4 +1,5 @@
 // backend/server.js
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
@@ -11,10 +12,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Razorpay (Test Keys - Replace with your actual keys in production)
+// Initialize Razorpay with credentials from .env
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  console.error('❌ Missing Razorpay credentials in .env file!');
+  process.exit(1);
+}
+
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_1DP5MMOk78U80Q',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'w42D4E12345678901234567890'
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
 // ==================== MOCK DATA ====================
