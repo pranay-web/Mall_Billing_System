@@ -1,16 +1,48 @@
-# React + Vite
+# FlashCart - Smart Mall Billing & Unified Checkout System
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A web-based and hardware-ready smart mall shopping and billing platform. Shop across multiple stores with one cart, one checkout, and one receipt.
 
-Currently, two official plugins are available:
+## Architecture
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```text
+mall-billing-system/
+├── frontend/             # React 19 + Vite + Tailwind CSS + Lucide Icons
+│   ├── src/
+│   │   ├── components/   # Scanner, Cart, Checkout, etc.
+│   │   ├── pages/        # Home, CustomerApp, CashierDashboard
+│   │   ├── config.js     # Dynamic API host config for local & LAN access
+│   │   └── index.css     # Inter typography & clean SaaS theme
+│   ├── public/
+│   └── package.json
+├── backend/              # Node.js + Express.js APIs and business logic
+│   ├── server.js         # REST endpoints for products, sessions, carts, checkouts
+│   └── package.json
+└── README.md
+```
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Unified Shopping**: Scan items from fashion, electronics, food, and grocery stores under one session.
+- **Real-time Bag & Cart Sync**: Dynamic cart badge counter, live subtotal, multi-tier GST, and discounts.
+- **Camera Barcode Scanner**: Built-in camera scanner with HTML5-QRCode + manual barcode entry fallback.
+- **Multi-Method Checkout**: Support for UPI (QR code), Credit/Debit Card, and Cash.
+- **Cashier POS Terminal**: Session ID lookup, merchandise audit, and exit clearance authorization.
+- **Modern Minimal UI**: Polished SaaS aesthetics with Inter typography and light mode design.
 
-## Expanding the Oxlint configuration
+## Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### 1. Backend
+```bash
+cd backend
+npm install
+node server.js
+```
+Runs by default on port `5005`.
+
+### 2. Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Runs by default on `http://localhost:5173`. Automatically accessible on local Wi-Fi / network.
