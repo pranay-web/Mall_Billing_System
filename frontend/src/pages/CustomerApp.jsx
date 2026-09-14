@@ -89,24 +89,30 @@ export default function CustomerApp({
     setShowSearch(false);
   };
 
-  const handleCheckout = async (paymentMethod) => {
+  const handleCheckout = async (paymentMethod, transactionData) => {
     try {
-      const response = await fetch(`${API_BASE}/api/checkout/payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          paymentMethod,
-          discount: 0,
-        }),
-      });
+      // If transaction data comes from Razorpay or the backend, use it directly
+      if (transactionData) {
+        setTransaction(transactionData);
+      } else {
+        // Fallback for other payment methods
+        const response = await fetch(`${API_BASE}/api/checkout/payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            paymentMethod,
+            discount: 0,
+          }),
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        setTransaction(data);
-        setCart([]);
-        setScreen('receipt');
+        if (response.ok) {
+          const data = await response.json();
+          setTransaction(data);
+        }
       }
+      setCart([]);
+      setScreen('receipt');
     } catch (error) {
       console.error('Error processing payment:', error);
       alert('Payment authorization failed!');
@@ -218,7 +224,8 @@ export default function CustomerApp({
         {screen === 'checkout' && !showSearch && (
           <Checkout
             cart={cart}
-            onPaymentComplete={(method) => handleCheckout(method)}
+            sessionId={sessionId}
+            onPaymentComplete={(method, transaction) => handleCheckout(method, transaction)}
             onCancel={() => setScreen('cart')}
           />
         )}

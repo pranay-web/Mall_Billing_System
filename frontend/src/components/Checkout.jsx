@@ -1,16 +1,114 @@
 // frontend/src/components/Checkout.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CreditCard, Smartphone, Banknote, ArrowLeft, Check } from 'lucide-react';
+import axios from 'axios';
+import { API_BASE } from '../config';
 
-export default function Checkout({ cart, onPaymentComplete, onCancel }) {
+export default function Checkout({ cart, sessionId, onPaymentComplete, onCancel }) {
   const [paymentMethod, setPaymentMethod] = useState('upi');
   const [discount, setDiscount] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // Load Razorpay SDK
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, []);
 
   // Calculate totals
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalGST = cart.reduce((sum, item) => sum + (item.price * item.quantity * item.gst) / 100, 0);
   const finalTotal = Math.max(0, subtotal + totalGST - discount);
+
+  const handleRazorpayPayment = async () => {
+    try {
+      setLoading(true);
+
+      // Create order on backend
+      const orderResponse = await axios.post(`${API_BASE}/api/razorpay/orders`, {
+        sessionId,
+        discount
+      });
+
+      const { orderId, amount, currency, key } = orderResponse.data;
+
+      // Razorpay checkout options
+      const options = {
+        key,
+        amount,
+        currency,
+        name: 'FlashCart',
+        description: 'Unified Mall Checkout',
+        order_id: orderId,
+        handler: async (response) => {
+          try {
+            // Verify payment on backend
+            const verifyResponse = await axios.post(`${API_BASE}/api/razorpay/verify`, {
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+              sessionId,
+              discount
+            });
+
+            if (verifyResponse.data.success) {
+              onPaymentComplete('razorpay', verifyResponse.data.transaction);
+            }
+          } catch (error) {
+            const msg = error.response?.data?.error || error.message;
+            alert('Payment verification failed: ' + msg);
+          }
+          setLoading(false);
+        },
+        prefill: {
+          name: 'Customer',
+          email: 'customer@flashcart.com',
+          contact: '9999999999'
+        },
+        theme: {
+          color: '#0066ff'
+        },
+        modal: {
+          ondismiss: () => {
+            setLoading(false);
+          }
+        }
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+    } catch (error) {
+      const msg = error.response?.data?.error || error.message;
+      alert('Error creating payment order: ' + msg);
+      setLoading(false);
+    }
+  };
+
+  const handleCashPayment = async () => {
+    try {
+      setLoading(true);
+
+      // For cash payment, directly call the payment endpoint
+      const response = await axios.post(`${API_BASE}/api/checkout/payment`, {
+        sessionId,
+        paymentMethod: 'cash',
+        discount
+      });
+
+      onPaymentComplete('cash', response.data);
+    } catch (error) {
+      alert('Error processing cash payment: ' + error.message);
+      setLoading(false);
+    }
+  };
 
   const handlePayment = async () => {
     if (!paymentMethod) {
@@ -18,12 +116,11 @@ export default function Checkout({ cart, onPaymentComplete, onCancel }) {
       return;
     }
 
-    setLoading(true);
-    // Simulate payment processing
-    setTimeout(() => {
-      onPaymentComplete(paymentMethod);
-      setLoading(false);
-    }, 1200);
+    if (paymentMethod === 'upi' || paymentMethod === 'card') {
+      handleRazorpayPayment();
+    } else if (paymentMethod === 'cash') {
+      handleCashPayment();
+    }
   };
 
   const paymentMethods = [

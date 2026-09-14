@@ -2,12 +2,20 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Initialize Razorpay (Test Keys - Replace with your actual keys in production)
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_1DP5MMOk78U80Q',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'w42D4E12345678901234567890'
+});
 
 // ==================== MOCK DATA ====================
 const products = [
@@ -215,6 +223,111 @@ app.post('/api/checkout/verify', (req, res) => {
     finalTotal: parseFloat(finalTotal.toFixed(2)),
     status: 'verified'
   });
+});
+
+// Create Razorpay Order
+app.post('/api/razorpay/orders', async (req, res) => {
+  try {
+    const { sessionId, discount = 0 } = req.body;
+
+    const session = sessions.get(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.items.length === 0) {
+      return res.status(400).json({ error: 'Cart is empty' });
+    }
+
+    const cartItems = session.items;
+    const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalGST = cartItems.reduce((sum, item) => sum + (item.price * item.quantity * item.gst / 100), 0);
+    const finalAmount = Math.round((subtotal + totalGST - discount) * 100); // Razorpay expects amount in paise
+
+    const orderOptions = {
+      amount: finalAmount,
+      currency: 'INR',
+      receipt: `order_${sessionId}`,
+      payment_capture: 1, // Auto-capture payment
+      notes: {
+        sessionId,
+        subtotal,
+        totalGST,
+        discount
+      }
+    };
+
+    const order = await razorpay.orders.create(orderOptions);
+
+    res.json({
+      success: true,
+      orderId: order.id,
+      amount: finalAmount,
+      currency: 'INR',
+      key: process.env.RAZORPAY_KEY_ID || 'rzp_test_1DP5MMOk78U80Q'
+    });
+  } catch (error) {
+    console.error('Error creating order:', error);
+    const errorMessage = error.error?.description || error.message || 'Failed to create Razorpay order. Please configure valid RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+// Verify Razorpay Payment
+app.post('/api/razorpay/verify', (req, res) => {
+  try {
+    const { orderId, paymentId, signature, sessionId, discount = 0 } = req.body;
+
+    // Create signature for verification
+    const generatedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || 'w42D4E12345678901234567890')
+      .update(`${orderId}|${paymentId}`)
+      .digest('hex');
+
+    if (generatedSignature !== signature) {
+      return res.status(400).json({ error: 'Invalid payment signature' });
+    }
+
+    // Payment verified successfully
+    const session = sessions.get(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const cartItems = session.items;
+    const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalGST = cartItems.reduce((sum, item) => sum + (item.price * item.quantity * item.gst / 100), 0);
+    const finalTotal = subtotal + totalGST - discount;
+
+    const transactionId = uuidv4().slice(0, 8).toUpperCase();
+    const transaction = {
+      transactionId,
+      sessionId,
+      items: cartItems,
+      subtotal: parseFloat(subtotal.toFixed(2)),
+      discount: parseFloat(discount.toFixed(2)),
+      totalGST: parseFloat(totalGST.toFixed(2)),
+      finalTotal: parseFloat(finalTotal.toFixed(2)),
+      paymentMethod: 'razorpay',
+      paymentId,
+      orderId,
+      status: 'completed',
+      completedAt: new Date(),
+      receiptUrl: `/api/receipt/${transactionId}`
+    };
+
+    transactions.set(transactionId, transaction);
+    session.status = 'completed';
+
+    res.json({
+      success: true,
+      transaction
+    });
+  } catch (error) {
+    console.error('Error verifying payment:', error);
+    const errorMessage = error.error?.description || error.message || 'Payment verification failed.';
+    res.status(500).json({ error: errorMessage });
+  }
 });
 
 // Process payment and create transaction
