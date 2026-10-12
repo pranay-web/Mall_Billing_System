@@ -1,0 +1,63 @@
+🗓️ WEEK 6 — FIRST SCANNER AND MID-SEMESTER DEMO
+
+Date: Monday, 14 September 2026
+
+🎯 Objective
+
+The objective of Week 6 was to add camera scanning to the customer app and present the MVP at the mid-semester evaluation.
+
+🛠️ Work Completed
+Added a camera scanner using the html5-qrcode library.
+Tested the scanner using QR codes that we generated ourselves.
+Connected each scan to the add-to-bag API.
+Prepared the MVP demo:
+Sign in
+Scan items
+View the unified bag
+Pay with Razorpay
+View the GST receipt
+Presented the MVP at the mid-semester evaluation.
+Collected feedback after the demo.
+
+⚠️ Error / Problem Faced
+
+In our own testing the scanner worked, because we only used QR codes.
+
+In the demo we pointed it at real product tags, and it either read nothing or picked up the QR code printed on the tag instead of the barcode.
+
+Real retail tags use EAN-13 barcodes (the 1D kind with vertical lines), and the library was tuned for QR codes.
+
+We also restarted the server once during the demo, and every bag and bill disappeared, because all data was kept only in memory.
+
+✅ Resolution
+Switched to "Type barcode" and catalog search during the demo, so the demo could continue.
+Recorded the scanner problem as the top issue for the next iteration.
+Recorded the data-loss problem as the second issue.
+Added the feedback from the demo to the requirements:
+Separate logins for customers and cashiers
+A cash desk that handles only cash
+
+🖼️ Project Picture
+
+The "Add by code" sheet used as a fallback during the demo: typing the barcode finds the product directly.
+
+💡 Learning
+
+We learned to test with real-world inputs, not only with inputs we create ourselves.
+
+We also learned that a manual fallback keeps the system usable when a feature like the camera fails.
+
+🔄 ACTIVITY DIAGRAM — SCANNING WITH FALLBACK
+flowchart TD
+    A([Start]) --> B[Open Scanner]
+    B --> C[Point Camera at Tag]
+    C --> D{Barcode Read?}
+    D -- Yes --> E{Product Found?}
+    D -- No --> F[Use Type Barcode / Catalog Search]
+    F --> E
+    E -- No --> G[Show Error]
+    G --> C
+    E -- Yes --> H[Add to Bag]
+    H --> I{More Items?}
+    I -- Yes --> C
+    I -- No --> J([End])
