@@ -1,0 +1,72 @@
+🗓️ WEEK 5 — ONLINE PAYMENTS WITH RAZORPAY
+
+Date: Monday, 7 September 2026
+
+🎯 Objective
+
+The objective of Week 5 was to add online payment through Razorpay (UPI and cards) and make sure that only genuine payments create a bill.
+
+🛠️ Work Completed
+Created a Razorpay test account and test keys.
+Added the Razorpay Node SDK to the backend.
+Built the order flow:
+The server prices the bag
+The server creates a Razorpay order for that amount
+The app opens Razorpay Checkout
+The customer pays by UPI or card
+Built the verify endpoint POST /razorpay/verify.
+Saved the bill and reduced stock only after a successful verification.
+Showed the digital GST receipt after payment.
+
+⚠️ Error / Problem Faced
+
+After paying, the browser simply tells our app "success", and that message can be faked by anyone.
+
+Until our Razorpay test keys were ready, we could not test payments at all.
+
+A double tap on Pay sent the verify request twice and could create two bills.
+
+✅ Resolution
+Verified every payment on the server using the signature returned by Razorpay.
+The server recomputes HMAC-SHA256(order_id | payment_id) with the secret key and compares it in constant time.
+The bill is saved only if the signatures match; otherwise no invoice is issued.
+Wrote a mock gateway for local testing that signs payments with a temporary secret, so the same verification code still runs.
+Made verify idempotent: a repeated request returns the same receipt, and an unchanged bag reuses its open order.
+
+🖼️ Project Picture
+
+Checkout screen with UPI, card and cash options, and the Razorpay test-mode payment window.
+
+💡 Learning
+
+We learned that the browser must never be trusted with money.
+
+We also learned how HMAC signatures prove that a message came from someone who holds the secret key.
+
+🔗 UML SEQUENCE DIAGRAM — ONLINE PAYMENT
+sequenceDiagram
+    actor Customer
+    participant Frontend as Frontend (React)
+    participant Backend as Backend (Express)
+    participant DB as SQLite
+    participant Razorpay
+
+    Customer->>Frontend: Tap Pay (UPI / Card)
+    Frontend->>Backend: POST /razorpay/orders
+    Backend->>DB: read products
+    Backend->>Backend: buildBill() GST and round-off
+    Backend->>Razorpay: orders.create(amount)
+    Razorpay-->>Backend: order_id
+    Backend-->>Frontend: orderId, amount, keyId
+    Frontend->>Razorpay: open Checkout(order_id)
+    Customer->>Razorpay: approve UPI / enter card
+    Razorpay-->>Frontend: payment_id + signature
+    Frontend->>Backend: POST /razorpay/verify
+    Backend->>Backend: verify HMAC-SHA256
+    alt signature valid
+        Backend->>DB: save bill, stock - qty
+        Backend-->>Frontend: receipt (GST invoice)
+        Frontend-->>Customer: show receipt
+    else invalid
+        Backend-->>Frontend: 400 no invoice issued
+    end
