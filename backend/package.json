@@ -1,28 +1,24 @@
 {
-  "name": "mall-billing-backend",
+  "name": "flashcart-backend",
   "version": "1.0.0",
-  "description": "Mall Billing System Backend API",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+  "description": "FlashCart — Smart Mall Billing & Unified Checkout API",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13"
   },
-  "keywords": [
-    "mall",
-    "billing",
-    "checkout"
-  ],
-  "author": "",
-  "license": "ISC",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "cashier:add": "node scripts/add-cashier.js"
+  },
   "dependencies": {
     "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^4.22.2",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
     "razorpay": "^2.9.8",
-    "uuid": "^9.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
-  "type": "commonjs"
+    "uuid": "^14.0.2"
+  }
 }
