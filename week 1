@@ -1,0 +1,91 @@
+🗓️ WEEK 1 — REQUIREMENT ANALYSIS AND PROBLEM STUDY
+
+Date: Monday, 10 August 2026
+
+🎯 Objective
+
+The objective of Week 1 was to understand the billing problem in a multi-showroom mall, collect the requirements of customers and cashiers, and decide what FlashCart should do.
+
+🛠️ Work Completed
+Visited a mall and observed billing at three different showrooms.
+Bought a shirt, earbuds and a coffee, and stood in three separate queues.
+Collected three separate GST bills and compared how each one was calculated.
+Listed the needs of the two users:
+Customer
+Cashier
+Wrote the problem statement: one bag and one bill for the whole mall.
+Listed the functional requirements:
+Sign in with a mobile number
+Scan product barcodes
+One bag for all showrooms
+One payment (UPI, card or cash)
+One GST invoice
+Cash desk with change calculation
+Chose a web app instead of an Android app so that customers do not have to install anything.
+
+⚠️ Error / Problem Faced
+
+We could not agree on how one bill could carry different GST rates.
+
+Clothes, electronics and food are taxed at different rates, but our first idea applied a single GST percentage to the whole bill.
+
+✅ Resolution
+Studied how GST works for retail goods.
+Learnt that the GST rate belongs to each product, through its HSN code.
+Decided that every product will store its own GST rate.
+Decided that the bill will add up tax separately for each rate (5%, 12%, 18%).
+Decided that the tax for each rate will be split into CGST and SGST.
+
+🖼️ Project Picture
+
+Three separate showroom bills from one mall visit, each with its own queue, payment and GST calculation — the problem FlashCart solves.
+
+💡 Learning
+
+We learned that getting the business rules right at the start saves a redesign later.
+
+We also learned that requirements must come from real users and real situations, not only from our own assumptions.
+
+📌 SOFTWARE ENGINEERING REQUIREMENT — WEEK 1
+Use Case Diagram
+
+The main use cases of the system are shown for the two actors, the Customer and the Cashier, and the external payment system, Razorpay.
+
+flowchart LR
+    Customer((Customer))
+    Cashier((Cashier))
+    Razorpay[[Razorpay]]
+
+    UC1([Sign in with Mobile Number])
+    UC2([Scan Product Barcode])
+    UC3([Browse / Search Catalog])
+    UC4([Add Item to Unified Bag])
+    UC5([View Bag and GST])
+    UC6([Checkout])
+    UC7([Pay Online - UPI / Card])
+    UC8([Pay Cash at Desk])
+    UC9([View Digital Receipt])
+
+    UC10([Sign in with Email and Password])
+    UC11([Start Day - Opening Cash])
+    UC12([Find Bill])
+    UC13([Collect Cash and Return Change])
+    UC14([Close Day - Cash Report])
+
+    Customer --> UC1
+    Customer --> UC2
+    Customer --> UC3
+    Customer --> UC5
+    Customer --> UC6
+    Customer --> UC9
+    UC2 -. include .-> UC4
+    UC3 -. include .-> UC4
+    UC7 -. extend .-> UC6
+    UC8 -. extend .-> UC6
+    UC7 --- Razorpay
+
+    Cashier --> UC10
+    Cashier --> UC11
+    Cashier --> UC12
+    Cashier --> UC13
+    Cashier --> UC14
