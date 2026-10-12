@@ -1,0 +1,64 @@
+🗓️ WEEK 8 — THE CASH DESK
+
+Date: Monday, 28 September 2026
+
+🎯 Objective
+
+The objective of Week 8 was to build the cashier's cash desk: collecting cash for bills, showing the change to return, and reconciling the cash drawer at the end of the day.
+
+🛠️ Work Completed
+Built the "Cash at the cash desk" option at checkout, which creates a pending bill with a Code 128 bill barcode.
+Built the cash desk screens:
+Start the day with the opening cash
+Find a bill by scanning it, or by bill ID or phone number
+Enter the cash received
+See the change to return with a note breakdown
+Close the day with the counted cash
+Showed the cash drawer total = opening cash + cash sales.
+Compared the counted cash with the expected cash to show whether the drawer is over or short.
+Marked the customer's receipt as Paid as soon as the cash is recorded.
+
+⚠️ Error / Problem Faced
+
+Our first cash desk also had an item-checking list and an exit pass. It was slow and confusing, and the feedback was that the desk should handle only cash.
+
+Searching for a bill sometimes matched a food product instead, because food codes started with "FC-", the same prefix as our bag IDs.
+
+The note breakdown suggested Rs. 2000 notes, which RBI withdrew in 2023.
+
+A cashier could also enter less cash than the bill amount.
+
+✅ Resolution
+Reduced the cash desk to two jobs: the change to return, and the cash that should be in the drawer at the end of the day.
+Renamed the food codes from "FC-" to "FD-".
+Removed Rs. 2000 from the note list, which now runs from Rs. 500 down to Rs. 1.
+Rejected cash amounts lower than the bill with a clear message.
+Example: a Rs. 17,898 bill paid with Rs. 20,000 gives Rs. 2,102 change = 4 × 500 + 100 + 2.
+
+🖼️ Project Picture
+
+Cash desk after collecting cash: the change to return with its note breakdown, and the drawer total for the day.
+
+💡 Learning
+
+We learned that simpler screens are faster to use and lead to fewer mistakes.
+
+We also learned how a greedy algorithm splits change into notes.
+
+🔄 ACTIVITY DIAGRAM — CASH DESK DAY
+flowchart TD
+    A([Start]) --> B[Cashier Signs In]
+    B --> C[Enter Opening Cash]
+    C --> D[Find Bill - Scan / Bill ID / Phone]
+    D --> E[Enter Cash Received]
+    E --> F{Cash >= Bill?}
+    F -- No --> G[Show Error]
+    G --> E
+    F -- Yes --> H[Show Change and Note Breakdown]
+    H --> I[Mark Bill Paid]
+    I --> J{More Customers?}
+    J -- Yes --> D
+    J -- No --> K[Enter Counted Cash]
+    K --> L[Compare with Expected Cash]
+    L --> M[Show Over / Short Report]
+    M --> N([End])
