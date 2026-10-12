@@ -1,0 +1,63 @@
+🗓️ WEEK 9 — REPLACING THE QR SCANNER WITH A BARCODE READER
+
+Date: Monday, 5 October 2026
+
+🎯 Objective
+
+The objective of Week 9 was to start Iteration 3 by fixing the scanner that failed in the mid-semester demo, so that it reads the real barcodes printed on retail tags.
+
+🛠️ Work Completed
+Removed the html5-qrcode library.
+Used the browser's built-in BarcodeDetector API (Chrome).
+Added a fallback for Safari and Firefox:
+barcode-detector package
+zxing-wasm (ZXing-C++ compiled to WebAssembly)
+Served the WebAssembly file from our own server and loaded it only when the scanner opens.
+Opened the rear camera at 1920 × 1080 with getUserMedia.
+Added a torch button, a beep, a vibration and an Undo button for each scan.
+Added an HTTPS mode for testing on phones: npm run dev:https.
+Added a home screen so the camera does not open straight after login.
+
+⚠️ Error / Problem Faced
+
+The QR code printed on the same tag was still being read instead of the barcode.
+
+Tags held off-centre were missed, but scanning the whole frame every time was slow.
+
+On phones the camera would not open at http://<laptop IP>, because browsers allow the camera only on HTTPS.
+
+One scan sometimes added the same item twice.
+
+✅ Resolution
+Allowed only linear barcode formats (EAN-13, EAN-8, UPC, Code 128, Code 39, ITF) and turned QR off.
+Scanned a wide band in the middle of the frame every 90 ms, and the full frame every 4th pass.
+Ran the dev server over HTTPS so the phone camera works.
+Ignored the same code for 2.2 seconds after a successful scan.
+Result: one read takes 25–35 ms per frame.
+
+🖼️ Project Picture
+
+Product labels page with EAN-13 barcodes for every product, used to test the scanner from another screen.
+
+💡 Learning
+
+We learned to choose a library that fits the real input: shop tags have barcodes, not QR codes.
+
+We also learned that browsers only allow the camera on secure (HTTPS) pages.
+
+🔄 ACTIVITY DIAGRAM — BARCODE ENGINE
+flowchart TD
+    A([Start]) --> B[Open Scan Screen]
+    B --> C[Start Rear Camera]
+    C --> D{Native BarcodeDetector Available?}
+    D -- Yes --> E[Use Native Detector]
+    D -- No --> F[Load ZXing WebAssembly]
+    E --> G[Read Frame Every 90 ms]
+    F --> G
+    G --> H[Decode Middle Band / Full Frame Every 4th Pass]
+    H --> I{Barcode Found?}
+    I -- No --> G
+    I -- Yes --> J{Same Code Within 2.2 s?}
+    J -- Yes --> G
+    J -- No --> K[Beep and Add to Bag]
+    K --> G
