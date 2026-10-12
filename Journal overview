@@ -1,0 +1,16 @@
+FlashCart — Smart Mall Billing and Unified Checkout
+Weekly Project Journal — Mondays, 10 August 2026 to 12 October 2026
+
+Course: UCS503 Software Engineering, Thapar Institute of Engineering and Technology
+Team (Group 3C82): Pranay Nagpal (1024031127), Suryansh Jain (1024031145), Srijan Tanwar (1024031144)
+Submitted to: Jhonsy Bansal
+
+Project Overview
+FlashCart is a unified checkout for shopping malls. Today every showroom in a mall has its own billing counter, so a shopper who buys a shirt, earbuds and a coffee stands in three queues, pays three times and gets three separate GST bills. With FlashCart the customer signs in with a mobile number, scans the barcode already printed on each product tag with the phone camera, and every item from every showroom goes into one bag. The customer pays once, by UPI or card through Razorpay or in cash at a central cash desk, and gets one GST invoice. A cash-desk app shows the cashier the change to return and the cash that should be in the drawer at the end of the day.
+
+The system is built with React 19, Vite 8 and Tailwind CSS 4 on the frontend, Node.js 22 and Express 5 on the backend, SQLite as the database, Razorpay for online payments, and the browser BarcodeDetector API / ZXing-C++ (WebAssembly) for barcode scanning.
+
+The project followed the iterative and incremental (agile) model in three iterations:
+Iteration 1 (Weeks 1–6): MVP — unified cart, GST engine, Razorpay, digital receipt, mid-semester demo.
+Iteration 2 (Weeks 7–8): Accounts and data — phone and email sign-in, SQLite database, cash desk.
+Iteration 3 (Weeks 9–10): Real retail — new barcode engine, real product tags, MRP pricing.
