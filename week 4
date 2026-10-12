@@ -1,0 +1,64 @@
+🗓️ WEEK 4 — BUILDING THE REACT FRONTEND
+
+Date: Monday, 31 August 2026
+
+🎯 Objective
+
+The objective of Week 4 was to build the customer web app with React, Vite and Tailwind CSS and connect it to the backend API.
+
+🛠️ Work Completed
+Set up React 19 with Vite 8 and Tailwind CSS 4.
+Built the main screens:
+Home
+Catalog
+Bag
+Checkout
+Receipt
+Used Axios to call the backend API.
+Showed items grouped by showroom in the bag.
+Showed the GST breakdown and CGST / SGST split on the bag screen.
+Added a catalog search by product name, SKU or barcode.
+Made the layout work on both phones and laptops.
+
+⚠️ Error / Problem Faced
+
+The catalog kept reloading forever and the browser's network tab filled with hundreds of /api/products calls.
+
+The function that loaded the catalog was created again on every render, so React's useEffect saw a "new" function each time and ran again, in a loop.
+
+After adding an item from the catalog sheet, the Bag tab still showed "empty" until the page was refreshed.
+
+After installing a new package, Vite showed "504 Outdated Optimize Dep".
+
+✅ Resolution
+Kept the loaded catalog in a useRef and fetched it only when it was empty, so it loads once.
+Re-read the bag from the server whenever the user switches tabs, so the screen always matches the server.
+Restarted the Vite dev server after installing new packages.
+
+🖼️ Project Picture
+
+Customer home screen showing the scan card, the bag summary and the five showrooms of the mall.
+
+💡 Learning
+
+We learned how React's useEffect dependencies work and how a changing function can cause an infinite loop.
+
+We also learned that the server is the source of truth, and the screen should re-read it instead of guessing.
+
+🔄 ACTIVITY DIAGRAM — CUSTOMER APP NAVIGATION
+flowchart TD
+    A([Start]) --> B[Open FlashCart]
+    B --> C{Signed in?}
+    C -- No --> D[Enter Mobile Number]
+    D --> E[Home Screen]
+    C -- Yes --> E
+    E --> F{Choose Action}
+    F -- Scan --> G[Scan Barcode]
+    F -- Browse --> H[Search Catalog]
+    G --> I[Add to Bag]
+    H --> I
+    I --> J[View Bag and GST]
+    J --> K{Checkout?}
+    K -- No --> E
+    K -- Yes --> L[Checkout Screen]
+    L --> M([End])
