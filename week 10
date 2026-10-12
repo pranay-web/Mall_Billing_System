@@ -1,0 +1,127 @@
+🗓️ WEEK 10 — REAL PRODUCTS, TESTING AND FINAL FIXES
+
+Date: Monday, 12 October 2026
+
+🎯 Objective
+
+The objective of Week 10 was to add real products using their printed barcodes, test the whole system end to end, and fix the remaining problems.
+
+🛠️ Work Completed
+Added the products we had actually bought, using the barcodes printed on their tags:
+Puma × RCB polo — Rs. 2,999
+Mufti checked shirt — Rs. 2,399
+Jean Paul Gaultier parfum
+Wrote 17 automated API tests in 7 groups:
+pricing
+database
+auth
+catalog and cart
+Razorpay checkout
+cash desk
+simulated gateway
+Ran a load test with 90 customers × 3 scans, 90 cash bills and 50 collections.
+Tested the full flow in the browser and on a phone.
+Prepared the report, UML diagrams and the presentation.
+
+⚠️ Error / Problem Faced
+
+The bill for the polo came to Rs. 3,538.82, more than the Rs. 2,999 printed on the tag. The MRP already includes GST, and our engine was adding 18% on top again.
+
+The load test failed with "out of stock" because a test product had only 10 units.
+
+On small phones, buttons were cut off and the cash amount box ran off the screen.
+
+On college Wi-Fi, the phone could not reach the laptop.
+
+✅ Resolution
+Added MRP-inclusive pricing: for tagged items the line total is exactly the MRP, and the taxable value is MRP ÷ 1.18 = Rs. 2,541.53 with GST of Rs. 457.47.
+Added the new mrp column to the existing database with a migration, without losing data.
+Used high-stock products in the load test.
+Fixed the layout and checked it at 375 px phone width.
+Used the phone's hotspot so the phone and laptop are on the same network.
+Result: 17/17 tests pass, all 3 real tags scan, and bills match the printed MRP exactly.
+
+🖼️ Project Picture
+
+Unified bag with the real Puma polo, Mufti shirt and JPG parfum, priced exactly at their printed MRP.
+
+💡 Learning
+
+We learned that real-world data (tax-inclusive MRP) can break assumptions made with test data.
+
+We also learned the value of automated tests: every fix was checked against all 17 tests.
+
+📐 UML CLASS DIAGRAM — COMPLETE DOMAIN MODEL
+classDiagram
+
+class Customer {
+    -id
+    -phone
+    +login(phone)
+}
+
+class ShoppingSession {
+    -sessionId
+    -status
+    +addItem(barcode, qty)
+    +updateQuantity(itemId, qty)
+    +removeItem(itemId)
+    +cartView()
+}
+
+class CartLine {
+    -productId
+    -quantity
+}
+
+class Product {
+    -barcode
+    -name
+    -cost
+    -mrp
+    -gst
+    -stock
+    +findByCode(code)
+    +adjustStock(delta)
+}
+
+class Transaction {
+    -invoiceNumber
+    -grandTotal
+    -paymentMethod
+    -paymentStatus
+    +receipt()
+}
+
+class CashShift {
+    -openingCash
+    -countedCash
+    +collectCash(bill, amount)
+    +summary()
+    +close(counted)
+}
+
+class Cashier {
+    -email
+    -passwordHash
+    +login(email, password)
+}
+
+class PricingEngine {
+    +buildBill(lines)
+}
+
+class PaymentGateway {
+    +createOrder(amount)
+    +verifySignature()
+}
+
+Customer "1" --> "*" ShoppingSession : owns
+ShoppingSession "1" *-- "*" CartLine : contains
+CartLine "*" --> "1" Product : refers to
+ShoppingSession "1" --> "0..1" Transaction : checks out as
+Customer "1" --> "*" Transaction : pays
+CashShift "0..1" --> "*" Transaction : collects
+Cashier "1" --> "*" CashShift : opens
+Transaction ..> PricingEngine : use
+Transaction ..> PaymentGateway : use
