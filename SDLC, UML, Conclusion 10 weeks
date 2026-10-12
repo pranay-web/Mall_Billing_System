@@ -1,0 +1,138 @@
+🏗️ SDLC DIAGRAM — PROJECT DEVELOPMENT PROCESS
+
+FlashCart followed the iterative and incremental (agile) model. Every iteration went through the same six phases, and the review feedback of one iteration became the requirements of the next.
+
+flowchart LR
+
+A[1. Requirement Analysis] -->
+B[2. System Design] -->
+C[3. Implementation] -->
+D[4. Testing] -->
+E[5. Deployment and Demo] -->
+F[6. Review and Feedback]
+
+F --> A
+
+A1[Study Mall Billing and User Needs] --> A
+B1[Design Architecture, Database and UML] --> B
+C1[Build React Apps and Express API] --> C
+D1[Automated Tests and Real Product Tags] --> D
+E1[Run on Laptop and Phone, Mid-Semester Demo] --> E
+F1[Turn Feedback into Next Iteration] --> F
+
+🔁 ITERATIONS DELIVERED
+
+flowchart TB
+
+I1["Iteration 1 — MVP (Weeks 1–6)
+Unified cart, GST engine, Razorpay, digital receipt"]
+I2["Iteration 2 — Accounts and Data (Weeks 7–8)
+Phone / email sign-in, SQLite, cash desk"]
+I3["Iteration 3 — Real Retail (Weeks 9–10)
+Barcode engine, real tags, MRP pricing"]
+
+I1 --> I2 --> I3
+
+🔗 COMPLETE SYSTEM UML
+flowchart TB
+
+Customer((CUSTOMER))
+Cashier((CASHIER))
+
+subgraph Client["CLIENT LAYER"]
+    CA[Customer App]
+    SCAN[Barcode Engine]
+    CD[Cash Desk App]
+end
+
+subgraph API["API LAYER"]
+    REST[Express REST API]
+    AUTH[Auth and Role Checks]
+end
+
+subgraph Services["SERVICE LAYER"]
+    CART[Cart / Sessions]
+    PRICE[GST Pricing Engine]
+    CHECK[Checkout]
+    DESK[Cash Desk Service]
+    GW[Payment Gateway]
+end
+
+subgraph Data["DATA LAYER"]
+    DB[(SQLite Database)]
+end
+
+RZP[Razorpay]
+
+Customer --> CA
+SCAN --> CA
+Cashier --> CD
+
+CA --> REST
+CD --> REST
+REST --> AUTH
+
+AUTH --> CART
+AUTH --> CHECK
+AUTH --> DESK
+
+CART --> PRICE
+CHECK --> PRICE
+CHECK --> GW
+GW --> RZP
+
+CART --> DB
+CHECK --> DB
+DESK --> DB
+
+CHECK --> Receipt[GST Invoice / Receipt]
+Receipt --> Customer
+
+
+
+📊 TEN-WEEK PROJECT PROGRESS
+WEEK 1
+Requirement Analysis
+     ↓
+WEEK 2
+System Design
+     ↓
+WEEK 3
+Backend + GST Engine
+     ↓
+WEEK 4
+React Frontend
+     ↓
+WEEK 5
+Razorpay Payments
+     ↓
+WEEK 6
+First Scanner + Mid-Semester Demo
+     ↓
+WEEK 7
+Database + Two Logins
+     ↓
+WEEK 8
+Cash Desk
+     ↓
+WEEK 9
+Barcode Engine
+     ↓
+WEEK 10
+Real Products + Testing
+     ↓
+━━━━━━━━━━━━━━━━━━━━━━
+🎯 RESULT: 17 / 17 TESTS PASSING, 3 / 3 REAL TAGS SCANNED
+━━━━━━━━━━━━━━━━━━━━━━
+
+✅ CONCLUSION
+
+FlashCart delivers a working unified checkout for a multi-showroom mall. Customers sign in with a phone number, scan the real barcodes on product tags into one bag, and pay once by UPI, card or cash for a single GST invoice. Cashiers get a simple cash desk that shows the change to return and reconciles the drawer at the end of the day. All data is stored in SQLite, and the business rules are covered by 17 automated tests.
+
+The biggest lessons were to test with real-world inputs (the QR scanner failed on real barcodes, and real tags include GST in the MRP), to keep the server as the only source of truth for prices and payments, and to let feedback after each iteration reshape the design.
+
+🚀 FUTURE SCOPE
+Inventory management: stock in, low-stock alerts, expiry tracking and an admin panel for products.
+Hardware smart cart: a trolley with a barcode scanner or RFID reader, a Raspberry Pi / ESP32, a touchscreen and a load cell that checks weight against scanned items.
+Security: SMS OTP sign-in, Razorpay webhooks, returns and refunds.
+Scale: PostgreSQL, cloud deployment and a pilot in one mall wing.
