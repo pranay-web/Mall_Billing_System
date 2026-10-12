@@ -1,0 +1,100 @@
+🗓️ WEEK 3 — BACKEND SETUP AND GST PRICING ENGINE
+
+Date: Monday, 24 August 2026
+
+🎯 Objective
+
+The objective of Week 3 was to set up the Node.js + Express backend, create the product catalog and the bag APIs, and build the GST pricing engine.
+
+🛠️ Work Completed
+Set up the Node.js and Express 5 project.
+Created the product catalog with:
+Barcode (EAN-13)
+Name
+Price
+GST rate
+HSN code
+Showroom
+Stock
+Created the bag (session) APIs:
+Open a bag
+Add an item
+Change quantity
+Remove an item
+Wrote the pricing function buildBill() which:
+Calculates tax for each item
+Groups tax by GST rate (5%, 12%, 18%)
+Splits tax into CGST and SGST
+Rounds the payable amount to the nearest rupee
+Wrote the first automated tests with node:test.
+
+⚠️ Error / Problem Faced
+
+Some bill totals were off by one paisa, and the total changed depending on when we rounded.
+
+In JavaScript, 0.1 + 0.2 gives 0.30000000000000004, so calculating with decimal rupees added tiny errors.
+
+When the GST came to an odd number of paise (for example 45,747 paise), it could not be split equally into CGST and SGST.
+
+The command node --test test/ also did not find our test files.
+
+✅ Resolution
+Changed every money calculation to whole paise (integers).
+Converted paise to rupees only when displaying amounts.
+Calculated CGST = tax ÷ 2 (rounded) and SGST = tax − CGST, so the two always add up exactly.
+Changed the test command to use a pattern: node --test "test/**/*.test.js".
+Verified with tests that every bill adds up exactly.
+
+🖼️ Project Picture
+
+A bag with items from three showrooms, showing the tax for each GST rate and the CGST / SGST split.
+
+💡 Learning
+
+We learned that money should never be stored or calculated as decimal numbers.
+
+We also learned that automated tests catch small rounding errors that are easy to miss by hand.
+
+🔗 UML CLASS DIAGRAM — PRICING ENGINE
+classDiagram
+
+class Product {
+    +barcode
+    +name
+    +price
+    +gstRate
+    +hsn
+    +stock
+}
+
+class CartLine {
+    +productId
+    +quantity
+}
+
+class PricingEngine {
+    +buildBill(lines)
+    +toPaise(amount)
+    +splitTax(tax)
+}
+
+class Bill {
+    +items
+    +taxBreakdown
+    +cgst
+    +sgst
+    +roundOff
+    +grandTotal
+}
+
+class TaxSlab {
+    +rate
+    +taxableValue
+    +cgst
+    +sgst
+}
+
+CartLine --> Product
+CartLine --> PricingEngine
+PricingEngine --> Bill
+Bill --> TaxSlab
