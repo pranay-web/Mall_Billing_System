@@ -1,0 +1,81 @@
+🗓️ WEEK 2 — SYSTEM DESIGN AND ARCHITECTURE
+
+Date: Monday, 17 August 2026
+
+🎯 Objective
+
+The objective of Week 2 was to design the overall system: the architecture, the main modules, the API endpoints and the first UML diagrams.
+
+🛠️ Work Completed
+Designed a three-tier client–server architecture:
+Presentation tier: two React web apps (Customer app and Cash desk)
+Application tier: one Express REST API
+Data tier: SQLite database and the Razorpay gateway
+Divided the backend into services:
+auth
+cart (sessions)
+pricing
+checkout
+cash desk
+Listed the main API endpoints:
+POST /auth/customer/login
+POST /cart/:id/add
+POST /razorpay/orders
+POST /razorpay/verify
+POST /pos/bills/:id/collect
+Drew the first use case and class diagrams.
+Chose the technology stack: React, Vite, Tailwind CSS, Node.js, Express, SQLite and Razorpay.
+
+⚠️ Error / Problem Faced
+
+In our first design, the phone calculated the bill total and sent that amount to the server for payment.
+
+While drawing the sequence diagram we realised that anyone could edit this request in the browser and pay Rs. 1 for a Rs. 3,000 shirt.
+
+We were also unsure whether "Pay online" and "Pay cash" should be «include» or «extend» in the use case diagram.
+
+✅ Resolution
+Moved all pricing to the server.
+The app now sends only the barcode and the quantity.
+The server looks up the price and GST from the database and creates the payment order itself.
+Wrote this down as our main design rule: clients send intents, never amounts.
+Made the two payment methods «extend» Checkout, because the customer picks only one.
+Made "Verify payment signature" «include» Pay online, because it always happens.
+
+🖼️ Project Picture
+
+Three-tier architecture of FlashCart: browser apps, Node.js server, and the data and payment services.
+
+💡 Learning
+
+We learned that security decisions belong in the design phase, not after coding.
+
+We also learned that drawing a sequence diagram early exposes problems that are hard to see in a block diagram.
+
+🏗️ ARCHITECTURE DIAGRAM — THREE-TIER DESIGN
+flowchart TB
+
+subgraph Browser["PRESENTATION TIER (Browser)"]
+    CA[Customer App - React SPA]
+    BE[Barcode Engine]
+    CD[Cash Desk - React SPA]
+end
+
+subgraph Server["APPLICATION TIER (Node.js)"]
+    API[Express 5 REST API /api/*]
+    SVC[Services: auth, cart, pricing, checkout, desk]
+    SEC[Security: tokens, scrypt, HMAC, rate limits]
+end
+
+subgraph Data["DATA TIER"]
+    DB[(SQLite Database)]
+    RZP[Razorpay Gateway]
+end
+
+BE -- EAN-13 code --> CA
+CA -- HTTPS / JSON --> API
+CD -- HTTPS / JSON --> API
+API --> SVC
+SVC --> SEC
+SVC -- SQL --> DB
+SEC -- orders / verify --> RZP
