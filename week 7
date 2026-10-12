@@ -1,0 +1,96 @@
+🗓️ WEEK 7 — DATABASE AND TWO LOGINS
+
+Date: Monday, 21 September 2026
+
+🎯 Objective
+
+The objective of Week 7 was to start Iteration 2 by fixing the data-loss problem with a database and by adding separate logins for customers and cashiers.
+
+🛠️ Work Completed
+Added a SQLite database using Node's built-in node:sqlite module.
+Created the tables:
+customers
+cashiers
+products
+transactions
+cash_shifts
+counters
+Turned on WAL mode for safe concurrent reads.
+Added sign-in for customers with just a 10-digit mobile number.
+Added sign-in for cashiers with email and password.
+Issued signed login tokens:
+Customers: valid for 30 days
+Cashiers: valid for 12 hours
+Added role checks so each user can only reach their own part of the API.
+
+⚠️ Error / Problem Faced
+
+All bags and bills were lost whenever the server restarted.
+
+After adding the database, every restart inserted the sample products again, so the catalog filled with duplicates.
+
+With one shared login, a customer could open the cashier pages.
+
+Cashier passwords also needed to be stored safely.
+
+✅ Resolution
+Stored all permanent data in SQLite, which is a single file and survives restarts.
+Used INSERT OR IGNORE on the unique barcode, so existing products are skipped when seeding.
+Put the role (customer or cashier) inside every login token and checked it on every request; anyone else gets a 403 error.
+Stored cashier passwords as salted scrypt hashes, never as plain text.
+Limited wrong login attempts (8 tries per 10 minutes for cashiers).
+
+🖼️ Project Picture
+
+Customer sign-in screen: only a mobile number is needed, with no password or app install.
+
+💡 Learning
+
+We learned that logging in (who you are) and permissions (what you are allowed to do) are two separate problems.
+
+We also learned why passwords must be hashed with a slow, salted algorithm.
+
+🗄️ DATABASE DESIGN — ENTITY RELATIONSHIP DIAGRAM
+erDiagram
+    CUSTOMERS ||--o{ TRANSACTIONS : pays
+    CASHIERS ||--o{ CASH_SHIFTS : opens
+    CASH_SHIFTS |o--o{ TRANSACTIONS : collects
+
+    CUSTOMERS {
+        int id PK
+        string phone UK
+        string created_at
+        string last_login_at
+    }
+    CASHIERS {
+        int id PK
+        string email UK
+        string name
+        string password_hash
+        int active
+    }
+    PRODUCTS {
+        string id PK
+        string barcode UK
+        string name
+        real cost
+        real mrp
+        int gst
+        string type
+        int stock
+    }
+    TRANSACTIONS {
+        string id PK
+        string invoice_number UK
+        int customer_id FK
+        real grand_total
+        string payment_method
+        string payment_status
+        int shift_id FK
+    }
+    CASH_SHIFTS {
+        int id PK
+        int cashier_id FK
+        real opening_cash
+        real counted_cash
+    }
