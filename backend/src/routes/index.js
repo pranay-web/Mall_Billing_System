@@ -193,6 +193,11 @@ export const createApiRouter = ({ config, store, auth, sessions, checkout, cashD
     res.status(201).json(cashDesk.processReturn(req.account, req.params.transactionId, req.body));
   });
 
+  // Adds a product found by scanning a barcode that is not in the catalog yet.
+  desk.post('/products', (req, res) => {
+    res.status(201).json(cashDesk.addProduct(req.account, req.body));
+  });
+
   desk.get('/shift', (req, res) => {
     res.json(cashDesk.getShift(req.account));
   });

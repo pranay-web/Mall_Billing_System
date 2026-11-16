@@ -5,6 +5,11 @@ import { newCreditNoteId } from '../lib/ids.js';
 import { toPaise, toRupees } from '../lib/money.js';
 import { LEGACY_BILL_PREFIX } from './checkout.js';
 import { buildCreditNote } from './pricing.js';
+import { CATEGORIES, SHOWROOMS } from '../data/catalog.js';
+import { randomBytes } from 'node:crypto';
+
+const GST_RATES = [0, 3, 5, 12, 18, 28];
+const BARCODE = /^[0-9A-Za-z-]{6,64}$/;
 
 const NON_RETURNABLE = new Set(['food']);
 const RETURN_REASONS = ['Wrong size / fit', 'Damaged or defective', 'Not as described', 'Changed my mind', 'Duplicate purchase', 'Other'];
@@ -373,5 +378,56 @@ export const createCashDeskService = ({ store, config, checkout, loyalty }) => {
     return { creditNote, bill: deskBill(txn), drawer: shiftSummary(shift) };
   };
 
-  return { pending, lookup, getShift, openShift, closeShift, drawers, collectCash, previewReturn, processReturn, returnReasons: RETURN_REASONS };
+  // ---------- Adding a product (cashiers only) ----------
+  const addProduct = (cashier, body = {}) => {
+    const barcode = String(body.barcode ?? '').trim();
+    if (!BARCODE.test(barcode)) {
+      throw badRequest('INVALID_BARCODE', 'Scan or type a barcode of 6 to 64 letters or digits.');
+    }
+    if (store.findProductByCode(barcode)) {
+      throw conflict('PRODUCT_EXISTS', 'A product with this barcode is already in the catalog.');
+    }
+    const name = String(body.name ?? '').trim();
+    if (name.length < 2 || name.length > 80) {
+      throw badRequest('INVALID_NAME', 'Enter a product name of 2 to 80 characters.');
+    }
+    const description = String(body.description ?? '').trim().slice(0, 200);
+    const mrp = Number(body.mrp);
+    if (!Number.isFinite(mrp) || mrp <= 0 || mrp > 10_000_000) {
+      throw badRequest('INVALID_MRP', 'Enter the MRP printed on the tag, including GST.');
+    }
+    const gstRate = Number(body.gstRate);
+    if (!GST_RATES.includes(gstRate)) {
+      throw badRequest('INVALID_GST', 'GST rate must be one of 0, 3, 5, 12, 18 or 28.');
+    }
+    const category = CATEGORIES.find((c) => c.id === body.category);
+    if (!category) throw badRequest('INVALID_CATEGORY', 'Choose a product category.');
+    const showroom = SHOWROOMS.find((r) => r.id === body.showroomId);
+    if (!showroom || showroom.category !== category.id) {
+      throw badRequest('INVALID_SHOWROOM', 'Choose a showroom that matches the category.');
+    }
+    const stock = body.stock === undefined || body.stock === '' ? 0 : Number(body.stock);
+    if (!Number.isInteger(stock) || stock < 0 || stock > 100_000) {
+      throw badRequest('INVALID_STOCK', 'Stock must be a whole number from 0 to 100,000.');
+    }
+    const hsn = String(body.hsn ?? '').replace(/\D/g, '').slice(0, 8);
+
+    const product = store.insertProduct({
+      id: `prd_${randomBytes(4).toString('hex')}`,
+      barcode,
+      sku: `P-${barcode}`.slice(0, 48),
+      name,
+      description,
+      category: category.id,
+      price: toRupees(toPaise(mrp / (1 + gstRate / 100))),
+      mrp: toRupees(toPaise(mrp)),
+      gstRate,
+      hsn,
+      showroomId: showroom.id,
+      stock,
+    });
+    return { product, addedBy: cashier.name };
+  };
+
+  return { pending, lookup, getShift, openShift, closeShift, drawers, collectCash, previewReturn, processReturn, addProduct, returnReasons: RETURN_REASONS };
 };

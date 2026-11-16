@@ -62,6 +62,9 @@ export const createSqliteStore = ({ db }) => {
     productById: db.prepare('SELECT * FROM products WHERE id = ?'),
     productByCode: db.prepare('SELECT * FROM products WHERE barcode = ? OR sku = ? COLLATE NOCASE'),
     adjustStock: db.prepare('UPDATE products SET stock = MAX(0, stock + ?) WHERE id = ?'),
+    insertProduct: db.prepare(`
+      INSERT INTO products (id, barcode, sku, name, description, type, cost, mrp, gst, hsn, showroom_id, stock)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
     customerByPhone: db.prepare('SELECT * FROM customers WHERE phone = ?'),
     customerById: db.prepare('SELECT * FROM customers WHERE id = ?'),
@@ -158,6 +161,11 @@ export const createSqliteStore = ({ db }) => {
       return toProduct(q.productByCode.get(c, c)) ?? null;
     },
     adjustStock: (productId, delta) => q.adjustStock.run(delta, productId),
+    /** Adds a product to the catalog; returns the stored product. */
+    insertProduct(p) {
+      q.insertProduct.run(p.id, p.barcode, p.sku, p.name, p.description, p.category, p.price, p.mrp, p.gstRate, p.hsn, p.showroomId, p.stock);
+      return toProduct(q.productById.get(p.id));
+    },
 
     // ---------- Customers ----------
     /** Finds or registers a customer by phone; returns `{ id, phone, isNew }`. */

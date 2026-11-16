@@ -600,3 +600,40 @@ describe('sharing & multi-desk', () => {
     assert.equal((await t.call('GET', '/api/pos/drawers', undefined, desk)).body.openDesks, 0);
   });
 });
+
+describe('adding a product at the cash desk', () => {
+  it('lets a cashier add a product from a scanned barcode, which customers can then scan', async () => {
+    const desk = await t.cashier();
+    const body = { barcode: '8906001234567', name: 'Steel Water Bottle', description: '750 ml, insulated', mrp: 899, gstRate: 18, category: 'clothing', showroomId: 'fashion-zone', stock: 12, hsn: '96170010' };
+    const added = await t.call('POST', '/api/pos/products', body, desk);
+    assert.equal(added.status, 201);
+    assert.equal(added.body.product.name, 'Steel Water Bottle');
+    assert.equal(added.body.product.mrp, 899);
+    assert.equal(added.body.product.price, 761.86); // 899 / 1.18, the GST-exclusive value
+    assert.equal(added.body.product.stock, 12);
+
+    const { token, sid } = await t.customer('9000000080');
+    const scanned = await t.call('POST', `/api/cart/${sid}/add`, { barcode: '8906001234567' }, token);
+    assert.equal(scanned.status, 201);
+    assert.equal(scanned.body.item.name, 'Steel Water Bottle');
+    assert.equal(scanned.body.item.unitMrp, 899);
+  });
+
+  it('refuses a barcode that is already in the catalog, and bad details', async () => {
+    const desk = await t.cashier();
+    const dup = await t.call('POST', '/api/pos/products', { barcode: 'FZ-SHIRT', name: 'Copy', mrp: 100, gstRate: 18, category: 'clothing', showroomId: 'fashion-zone' }, desk);
+    assert.equal(dup.body.error.code, 'PRODUCT_EXISTS');
+    const bad = { barcode: '8906009999991', name: 'X', mrp: 100, gstRate: 18, category: 'clothing', showroomId: 'fashion-zone' };
+    assert.equal((await t.call('POST', '/api/pos/products', { ...bad, name: 'X' }, desk)).body.error.code, 'INVALID_NAME');
+    assert.equal((await t.call('POST', '/api/pos/products', { ...bad, mrp: 0, name: 'Okay name' }, desk)).body.error.code, 'INVALID_MRP');
+    assert.equal((await t.call('POST', '/api/pos/products', { ...bad, gstRate: 7, name: 'Okay name' }, desk)).body.error.code, 'INVALID_GST');
+    assert.equal((await t.call('POST', '/api/pos/products', { ...bad, showroomId: 'tech-store', name: 'Okay name' }, desk)).body.error.code, 'INVALID_SHOWROOM');
+    assert.equal((await t.call('POST', '/api/pos/products', { ...bad, barcode: 'x y', name: 'Okay name' }, desk)).body.error.code, 'INVALID_BARCODE');
+  });
+
+  it('is not open to customers', async () => {
+    const { token } = await t.customer('9000000081');
+    const res = await t.call('POST', '/api/pos/products', { barcode: '8906001111111', name: 'Sneaky', mrp: 10, gstRate: 5, category: 'food', showroomId: 'food-court' }, token);
+    assert.equal(res.status, 403);
+  });
+});

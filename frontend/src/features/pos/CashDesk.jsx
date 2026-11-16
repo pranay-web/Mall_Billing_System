@@ -1,4 +1,4 @@
-import { Camera, Clock3, LogOut, Moon, ScanBarcode, Search, UserRound } from 'lucide-react';
+import { Camera, Clock3, LogOut, Moon, PackagePlus, ScanBarcode, Search, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppHeader } from '../../components/AppHeader.jsx';
 import { BarcodeScanner } from '../../components/BarcodeScanner.jsx';
@@ -9,6 +9,7 @@ import { Card, Spinner } from '../../components/ui/misc.jsx';
 import { SIGNED_OUT_EVENT, api, authStore } from '../../lib/api.js';
 import { scanFeedback } from '../../lib/feedback.js';
 import CashierLogin from './CashierLogin.jsx';
+import { AddProduct } from './AddProduct.jsx';
 import { AllDesks } from './AllDesks.jsx';
 import { CollectCash, CollectedCard } from './CollectCash.jsx';
 import { ReturnedCard } from './ReturnItems.jsx';
@@ -70,6 +71,7 @@ function Desk({ cashier, onSignOut }) {
   const [lookupError, setLookupError] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [endDayOpen, setEndDayOpen] = useState(false);
+  const [addProductOpen, setAddProductOpen] = useState(false);
   const lookupRef = useRef(null);
 
   const loadShift = useCallback(async () => {
@@ -137,12 +139,16 @@ function Desk({ cashier, onSignOut }) {
 
   // ---------- Gates: loading → day closed report → start day ----------
   const header = (
+    <>
     <AppHeader
       suffix="Cash desk"
       maxWidth="max-w-6xl"
       center={<DeskClock name={cashier.name} />}
       right={
         <>
+          <Button variant="secondary" size="sm" icon={PackagePlus} onClick={() => setAddProductOpen(true)}>
+            <span className="hidden sm:inline">Add product</span>
+          </Button>
           {shiftOpen && (
             <Button variant="secondary" size="sm" icon={Moon} onClick={() => setEndDayOpen(true)} className="max-sm:hidden">
               End day
@@ -154,6 +160,8 @@ function Desk({ cashier, onSignOut }) {
         </>
       }
     />
+    <AddProduct open={addProductOpen} onClose={() => setAddProductOpen(false)} />
+    </>
   );
 
   if (shiftState.loading) {

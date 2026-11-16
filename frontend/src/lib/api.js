@@ -146,6 +146,7 @@ export const api = {
     quoteReturn: (transactionId, body) => request('post', `/pos/bills/${enc(transactionId)}/returns/quote`, { ...asCashier, data: body }),
     processReturn: (transactionId, body) => request('post', `/pos/bills/${enc(transactionId)}/returns`, { ...asCashier, data: body }),
     drawers: () => request('get', '/pos/drawers', asCashier),
+    addProduct: (product) => request('post', '/pos/products', { ...asCashier, data: product }),
     shift: () => request('get', '/pos/shift', asCashier),
     openShift: (openingCash) => request('post', '/pos/shift/open', { ...asCashier, data: { openingCash } }),
     closeShift: (countedCash) => request('post', '/pos/shift/close', { ...asCashier, data: { countedCash } }),
