@@ -1,0 +1,12 @@
+WEEK 14 — SHARING RECEIPTS SECURELY
+
+Date: Monday, 9 November 2026
+
+Problem: A shared receipt link must open without signing in, but nobody guessing a bill ID may see someone else's bill.
+
+Solution:
+- Each receipt gets a token made with HMAC-SHA256 from the server secret.
+- The server compares tokens in constant time, so the check cannot be timed.
+- A valid token opens the receipt read-only; a forged token gets a not-found reply.
+- Share, WhatsApp and Copy link use the Web Share API, with copy as the fallback.
+- Tested that valid links open and forged links are refused.

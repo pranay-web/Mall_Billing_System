@@ -1,0 +1,12 @@
+WEEK 16 — MULTI-CASHIER DRAWERS AND HANDOVER
+
+Date: Monday, 23 November 2026
+
+Problem: With several cashiers, nobody could see the cash other desks held, and a new shift started with no float.
+
+Solution:
+- Each cashier has their own drawer, and the desk lists every drawer open today.
+- The floor total is calculated on the server from all open drawers.
+- A new cashier can take over the counted float of the colleague who closed last.
+- A refund reduces the drawer it was paid from, so all totals stay consistent.
+- Tests cover handover, floor totals, and refusing a refund bigger than the drawer.

@@ -1,0 +1,12 @@
+WEEK 11 — FLASHCART POINTS (LOYALTY)
+
+Date: Monday, 19 October 2026
+
+Problem: A discount on the bill would lower the taxable value and change the GST already printed on the invoice.
+
+Solution:
+- Studied how GST applies to discounts and vouchers before writing code.
+- Treated FlashCart points as a voucher, so the invoice total and GST stay the same.
+- Reduced only the amount due, which is what goes to Razorpay or the cash desk.
+- Capped redemption at 50% of the bill and at the customer's balance, checked on the server.
+- Earned points only after payment, and logged every movement in a ledger table.

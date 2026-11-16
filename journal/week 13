@@ -1,0 +1,12 @@
+WEEK 13 — REFUND METHOD AND DRAWER SAFETY
+
+Date: Monday, 2 November 2026
+
+Problem: A cash refund larger than the cash in the drawer would leave the drawer negative.
+
+Solution:
+- The cashier first sees a quote with the exact refund and note split.
+- Cash refunds are checked against the cash in the drawer before anything is written.
+- Card or UPI refunds go back to the original payment through the gateway.
+- Points used on the returned part come back as points, not cash.
+- The desk warns the cashier and asks them to switch the method or top up the drawer.

@@ -1,0 +1,12 @@
+WEEK 12 — RETURNS AND GST CREDIT NOTES
+
+Date: Monday, 26 October 2026
+
+Problem: A refund of the whole line total did not match the original invoice when only some units of an item were returned.
+
+Solution:
+- Each returned unit takes its pro-rata share of taxable value and GST, in whole paise.
+- Checked that returning every unit reverses the original invoice to the paisa.
+- Numbered credit notes per financial year (FC/CN/2627/000001), as GST requires.
+- Refused food items and returns after 30 days, and blocked returning more than was bought.
+- Saved restock, points update and credit note in one database transaction, so they succeed or fail together.
