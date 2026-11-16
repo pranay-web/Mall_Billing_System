@@ -1,5 +1,5 @@
 FlashCart — Smart Mall Billing and Unified Checkout
-Weekly Project Journal — Mondays, 10 August 2026 to 30 November 2026 (17 weeks)
+Weekly Project Journal — Mondays, 10 August 2026 to 9 November 2026 (14 weeks)
 
 Course: UCS503 Software Engineering, Thapar Institute of Engineering and Technology
 Team (Group 3C82): Pranay Nagpal (1024031127), Suryansh Jain (1024031145), Srijan Tanwar (1024031144)
@@ -14,4 +14,4 @@ The project followed the iterative and incremental (agile) model in four iterati
 Iteration 1 (Weeks 1–6): MVP — unified cart, GST engine, Razorpay, digital receipt, mid-semester demo.
 Iteration 2 (Weeks 7–8): Accounts and data — phone and email sign-in, SQLite database, cash desk.
 Iteration 3 (Weeks 9–10): Real retail — new barcode engine, real product tags, MRP pricing.
-Iteration 4 (Weeks 11–17): Loyalty and returns — FlashCart points, returns with GST credit notes, receipt sharing, multi-cashier drawers, dark mode and the installable app.
+Iteration 4 (Weeks 11–14): Loyalty and returns — FlashCart points, returns with GST credit notes, receipt sharing.
