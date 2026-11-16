@@ -16,6 +16,24 @@ Cashiers sign in with **email + password**. The cash desk does only cash work: f
 
 ---
 
+## What's new (final evaluation build)
+
+| Feature | Where | How it works |
+| --- | --- | --- |
+| **FlashCart points** | Checkout → points slider; **You** tab | Earn 1 point per ₹50 paid (`LOYALTY_EARN_PER_RUPEES`), 1 point = ₹1 off, up to 50% of a bill (`LOYALTY_MAX_REDEEM_PERCENT`). Points are a voucher: GST stays on the full invoice, `amountDue` is what's paid by UPI / card / cash. Every movement is in `loyalty_ledger`. |
+| **Returns & refunds** | Cash desk → look up any **paid** bill | Pick items and quantities, reason, refund in **cash** (from the drawer) or **to card / UPI**. The server prices a GST **credit note** (`FC/CN/…`) pro-rata from the invoice, restocks the items, credits redeemed points back and reverses earned points. Food can't be returned; the window is `RETURN_WINDOW_DAYS` (30). A cash refund can't exceed the drawer. |
+| **Share receipt** | Receipt → Share / WhatsApp / Copy link / Print-PDF | `sharePath` carries an HMAC token; `GET /api/receipt/:id?s=<token>` opens the bill read-only without signing in. |
+| **Spend summary & order again** | **You** tab | `GET /api/me/summary`: monthly spend (6 months), favourite showroom, most-bought items, one-tap re-order of Food Court items, refunds, points history. |
+| **Multi-cashier drawers & handover** | Cash desk sidebar; Start-day screen | Each cashier has their own drawer. **All desks today** lists every drawer (`GET /api/pos/drawers`); a new cashier can **take over** the last closed drawer's counted cash. Add cashiers with `npm run cashier:add`. |
+| **Dark mode** | Sun / moon in every header; **You → Appearance** | Follows the OS by default; the palette is remapped under `[data-theme=dark]` in `index.css`. Receipts always print light. |
+| **Installable app (PWA)** | Home banner / **You → Install** | `manifest.webmanifest` + `sw.js`: app shell cached offline, API never cached. |
+
+New endpoints: `PUT /cart/:sid/points`, `GET /me/summary`, `GET /credit-notes/:id`, `POST /pos/bills/:id/returns/quote`, `POST /pos/bills/:id/returns`, `GET /pos/drawers`. New error codes: `POINTS_LIMIT`, `INVALID_POINTS`, `NOT_PAID`, `NOT_RETURNABLE`, `RETURN_EXCEEDS`, `RETURN_WINDOW_CLOSED`, `INSUFFICIENT_DRAWER`, `CREDIT_NOTE_NOT_FOUND`.
+
+New tables: `refunds` (credit notes) and `loyalty_ledger`; `customers.points` is added to existing databases automatically. `npm test` covers all of the above (25 tests).
+
+---
+
 ## Quick start
 
 **Requires Node.js 22.13+.** SQLite uses Node's built-in `node:sqlite`, so there is no database server to install.

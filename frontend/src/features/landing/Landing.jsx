@@ -17,7 +17,7 @@ const SHOWROOMS = [
 const STEPS = [
   { icon: Smartphone, title: 'Sign in with your phone', body: 'Just your mobile number — no password, no OTP. Your bag and receipts are linked to it.' },
   { icon: ScanLine, title: 'Scan any barcode', body: 'Point your phone at the barcode on any tag in any showroom. Everything lands in one bag.' },
-  { icon: CreditCard, title: 'Pay once', body: 'UPI or card via Razorpay, or cash at the desk where the cashier hands back exact change.' },
+  { icon: CreditCard, title: 'Pay once, earn points', body: 'UPI or card via Razorpay, or cash at the desk. Every bill earns FlashCart points you can spend next time — and returns get a proper credit note.' },
 ];
 
 export default function Landing() {
@@ -74,7 +74,7 @@ export default function Landing() {
               </Button>
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-[13px] font-medium text-zinc-500">
-              {['Phone-number sign in', 'Razorpay UPI & cards', 'Cash desk with change calculator'].map((t) => (
+              {['Phone-number sign in', 'Razorpay UPI & cards', 'FlashCart points on every bill', 'Returns with GST credit notes', 'Installs as an app · dark mode'].map((t) => (
                 <li key={t} className="flex items-center gap-1.5">
                   <Check className="size-4 text-emerald-500" strokeWidth={2.5} /> {t}
                 </li>

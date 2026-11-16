@@ -9,7 +9,9 @@ import { Card, Spinner } from '../../components/ui/misc.jsx';
 import { SIGNED_OUT_EVENT, api, authStore } from '../../lib/api.js';
 import { scanFeedback } from '../../lib/feedback.js';
 import CashierLogin from './CashierLogin.jsx';
+import { AllDesks } from './AllDesks.jsx';
 import { CollectCash, CollectedCard } from './CollectCash.jsx';
+import { ReturnedCard } from './ReturnItems.jsx';
 import { DayReport, DrawerPanel, EndDaySheet } from './DrawerPanel.jsx';
 import { PendingBills } from './PendingBills.jsx';
 import { StartDay } from './StartDay.jsx';
@@ -57,11 +59,12 @@ export default function CashDesk() {
 }
 
 function Desk({ cashier, onSignOut }) {
-  const [shiftState, setShiftState] = useState({ loading: true, shift: null, lastClosed: null, error: null });
+  const [shiftState, setShiftState] = useState({ loading: true, shift: null, lastClosed: null, handover: null, error: null });
   const [report, setReport] = useState(null);
   const [pending, setPending] = useState({ loading: true, bills: [] });
   const [selected, setSelected] = useState(null);
   const [collected, setCollected] = useState(null);
+  const [returned, setReturned] = useState(null);
   const [code, setCode] = useState('');
   const [lookingUp, setLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState(null);
@@ -71,8 +74,8 @@ function Desk({ cashier, onSignOut }) {
 
   const loadShift = useCallback(async () => {
     try {
-      const { shift, lastClosed } = await api.pos.shift();
-      setShiftState({ loading: false, shift, lastClosed, error: null });
+      const { shift, lastClosed, handover } = await api.pos.shift();
+      setShiftState({ loading: false, shift, lastClosed, handover: handover ?? null, error: null });
     } catch (err) {
       setShiftState((s) => ({ ...s, loading: false, error: err }));
     }
@@ -113,6 +116,7 @@ function Desk({ cashier, onSignOut }) {
       const { bill } = await api.pos.lookup(value);
       setSelected(bill);
       setCollected(null);
+      setReturned(null);
       setCode('');
       scanFeedback('success');
     } catch (err) {
@@ -127,6 +131,7 @@ function Desk({ cashier, onSignOut }) {
   const nextCustomer = () => {
     setSelected(null);
     setCollected(null);
+    setReturned(null);
     setTimeout(() => lookupRef.current?.focus(), 50);
   };
 
@@ -191,7 +196,8 @@ function Desk({ cashier, onSignOut }) {
         <StartDay
           cashier={cashier}
           lastClosed={shiftState.lastClosed}
-          onStarted={(shift) => setShiftState({ loading: false, shift, lastClosed: null, error: null })}
+          handover={shiftState.handover}
+          onStarted={(shift) => setShiftState({ loading: false, shift, lastClosed: null, handover: null, error: null })}
         />
       </div>
     );
@@ -219,7 +225,7 @@ function Desk({ cashier, onSignOut }) {
                   autoFocus
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
-                  placeholder="Scan bill barcode, or enter customer phone / bill ID"
+                  placeholder="Scan any bill barcode (to collect cash or process a return), or enter phone / bill ID"
                   className="h-full min-w-0 flex-1 bg-transparent text-[15px] text-zinc-900 outline-none placeholder:text-zinc-400"
                   autoComplete="off"
                   spellCheck={false}
@@ -244,17 +250,25 @@ function Desk({ cashier, onSignOut }) {
             </Alert>
           )}
 
-          {collected ? (
+          {returned ? (
+            <ReturnedCard result={returned} onNext={nextCustomer} />
+          ) : collected ? (
             <CollectedCard result={collected} onNext={nextCustomer} />
           ) : selected ? (
             <CollectCash
               key={selected.transactionId}
               bill={selected}
+              drawer={shiftState.shift}
               onClose={nextCustomer}
               onCollected={(res) => {
                 setCollected(res);
                 setShiftState((s) => ({ ...s, shift: res.drawer }));
                 loadPending();
+              }}
+              onReturned={(res) => {
+                setReturned(res);
+                setSelected(res.bill);
+                setShiftState((s) => ({ ...s, shift: res.drawer }));
               }}
             />
           ) : null}
@@ -266,6 +280,7 @@ function Desk({ cashier, onSignOut }) {
             onSelect={(bill) => {
               setSelected(bill);
               setCollected(null);
+              setReturned(null);
               setLookupError(null);
             }}
           />
@@ -273,6 +288,7 @@ function Desk({ cashier, onSignOut }) {
 
         <aside className="space-y-4 lg:sticky lg:top-[5.25rem]">
           <DrawerPanel shift={shiftState.shift} onEndDay={() => setEndDayOpen(true)} />
+          <AllDesks refreshKey={`${shiftState.shift.cashInDrawer}:${shiftState.shift.refundsIssued}`} />
         </aside>
       </main>
 
@@ -285,7 +301,7 @@ function Desk({ cashier, onSignOut }) {
           setSelected(null);
           setCollected(null);
           setReport(r);
-          setShiftState({ loading: false, shift: null, lastClosed: r, error: null });
+          setShiftState({ loading: false, shift: null, lastClosed: r, handover: null, error: null });
         }}
       />
 

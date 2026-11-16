@@ -27,6 +27,7 @@ export function DrawerPanel({ shift, onEndDay }) {
           <Row label={`Cash sales · ${pluralize(shift.billsCollected, 'bill')}`} value={`+${formatINR(shift.cashSales)}`} strong />
           <Row label="Received from customers" value={formatINR(shift.cashReceived)} muted indent />
           <Row label="Change returned" value={`−${formatINR(shift.changeReturned)}`} muted indent />
+          {shift.refundsIssued > 0 && <Row label={`Cash refunds · ${pluralize(shift.refundsIssued, 'return')}`} value={`−${formatINR(shift.cashRefunded)}`} strong />}
         </dl>
 
         {shift.pendingBills > 0 && (
@@ -35,6 +36,24 @@ export function DrawerPanel({ shift, onEndDay }) {
           </p>
         )}
       </div>
+
+      {shift.refunds?.length > 0 && (
+        <div className="border-t border-zinc-100 px-5 py-4">
+          <Eyebrow>Returns today</Eyebrow>
+          <ul className="mt-3 space-y-2.5">
+            {shift.refunds.slice(0, 4).map((r) => (
+              <li key={r.creditNoteId} className="flex items-center justify-between gap-3 text-[13px]">
+                <span className="w-16 shrink-0 text-zinc-400 tabular-nums">{formatTime(r.createdAt)}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-zinc-500">{r.creditNoteNumber}</span>
+                <span className="text-right">
+                  <span className="font-semibold text-zinc-900 tabular-nums">−{formatINR(r.amount, { whole: true })}</span>
+                  <span className="block text-[11px] text-zinc-400">{r.method === 'cash' ? 'cash' : 'to card / UPI'}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {shift.collections.length > 0 && (
         <div className="border-t border-zinc-100 px-5 py-4">
@@ -105,6 +124,7 @@ export function EndDaySheet({ open, shift, onClose, onClosed }) {
           <p className="mt-1 text-4xl font-semibold tracking-tight tabular-nums">{formatINR(shift.cashInDrawer)}</p>
           <p className="mt-2 text-[13px] text-white/50 tabular-nums">
             {formatINR(shift.openingCash)} opening + {formatINR(shift.cashSales)} cash sales
+            {shift.cashRefunded > 0 && ` − ${formatINR(shift.cashRefunded)} refunds`}
           </p>
         </div>
 
@@ -155,6 +175,7 @@ export function DayReport({ report, cashier, onStartNew, onSignOut }) {
           <Row label={`Cash sales · ${pluralize(report.billsCollected, 'bill')}`} value={`+${formatINR(report.cashSales)}`} strong />
           <Row label="Received from customers" value={formatINR(report.cashReceived)} muted indent />
           <Row label="Change returned" value={`−${formatINR(report.changeReturned)}`} muted indent />
+          {report.refundsIssued > 0 && <Row label={`Cash refunds · ${pluralize(report.refundsIssued, 'return')}`} value={`−${formatINR(report.cashRefunded)}`} strong />}
           <div className="border-t border-dashed border-zinc-200 pt-2.5">
             <Row label="Expected in drawer" value={formatINR(report.cashInDrawer)} strong />
           </div>
@@ -180,6 +201,31 @@ export function DayReport({ report, cashier, onStartNew, onSignOut }) {
                     <td className="py-1.5 font-mono text-[12px]">{c.invoiceNumber}</td>
                     <td className="py-1.5 text-right font-medium text-zinc-900">{formatINR(c.amount)}</td>
                     <td className="py-1.5 text-right">{formatINR(c.change)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {report.refunds?.length > 0 && (
+          <div className="border-t border-zinc-100 px-6 py-5">
+            <Eyebrow>Returns & refunds</Eyebrow>
+            <table className="mt-3 w-full text-[13px] tabular-nums">
+              <thead className="text-left text-[11px] uppercase tracking-wider text-zinc-400">
+                <tr>
+                  <th className="pb-2 font-semibold">Time</th>
+                  <th className="pb-2 font-semibold">Credit note</th>
+                  <th className="pb-2 font-semibold">Refund</th>
+                  <th className="pb-2 text-right font-semibold">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 text-zinc-700">
+                {report.refunds.map((r) => (
+                  <tr key={r.creditNoteId}>
+                    <td className="py-1.5">{formatTime(r.createdAt)}</td>
+                    <td className="py-1.5 font-mono text-[12px]">{r.creditNoteNumber}</td>
+                    <td className="py-1.5">{r.method === 'cash' ? 'Cash' : 'Card / UPI'}</td>
+                    <td className="py-1.5 text-right font-medium text-zinc-900">−{formatINR(r.amount)}</td>
                   </tr>
                 ))}
               </tbody>

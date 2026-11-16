@@ -1,0 +1,73 @@
+\documentclass[tikz,border=6pt]{standalone}
+\input{preamble}
+\tikzset{
+  cls/.style={rectangle split,rectangle split parts=3,draw,line width=0.6pt,inner sep=4pt,text width=5.0cm,
+              font=\footnotesize\ttfamily,rectangle split part align={center,left,left},anchor=north},
+  svc/.style={cls,rectangle split parts=2},
+  rel/.style={line width=0.6pt},
+  dep/.style={dashedarr},
+  comp/.style={{Diamond[fill=black,length=4mm,width=2.4mm]}-,line width=0.6pt},
+  m/.style={font=\footnotesize\bfseries,inner sep=1.5pt,fill=white},
+  r/.style={font=\footnotesize\itshape,inner sep=1.5pt,fill=white},
+}
+\newcommand{\cname}[1]{\sffamily\bfseries\normalsize #1}
+\newcommand{\stereo}[2]{\sffamily\scriptsize\guillemotleft #1\guillemotright\\\sffamily\bfseries\normalsize #2}
+\begin{document}
+\begin{tikzpicture}
+% ---------- row 1 ----------
+\node[cls] (cust) at (0,0) {\cname{Customer}\nodepart{two}
+- id: Integer\\- phone: String \{unique\}\\- points: Integer \{>= 0\}\\- createdAt, lastLoginAt: DateTime
+\nodepart{three}+ login(phone): Token\\+ summary(): Insights};
+\node[cls] (sess) at (7.2,0) {\cname{ShoppingSession}\nodepart{two}
+- sessionId: String (FC-...)\\- customerId: Integer\\- status: active|checked\_out\\- redeemPoints: Integer\\- expiresAt: DateTime
+\nodepart{three}+ addItem(barcode, qty)\\+ updateQuantity(itemId, qty)\\+ removeItem(itemId)\\+ setRedeemPoints(points)\\+ cartView(): Bill + loyalty};
+\node[cls] (line) at (14.4,0) {\cname{CartLine}\nodepart{two}
+- itemId: UUID\\- productId: String\\- quantity: Integer\nodepart{three}\strut};
+\node[cls] (prod) at (21.6,0) {\cname{Product}\nodepart{two}
+- id: String\\- barcode: String \{EAN-13\}\\- name: String\\- cost: Decimal (excl. GST)\\- mrp: Decimal [0..1]\\- gst: 0|3|5|12|18|28\\- type: String (food = no returns)\\- stock: Integer
+\nodepart{three}+ findByCode(code)\\+ adjustStock(delta)};
+% ---------- row 2 ----------
+\node[cls] (led) at (0,-8.8) {\cname{LoyaltyLedgerEntry}\nodepart{two}
+- id: Integer\\- customerId: Integer\\- delta: Integer (+ earn / \textminus\ redeem)\\- balanceAfter: Integer\\- kind: earn|redeem|credit|reverse\\- reference: bill or credit note ID\\- createdAt: DateTime
+\nodepart{three}\strut};
+\node[cls] (txn) at (7.2,-8.8) {\cname{Transaction (Bill)}\nodepart{two}
+- id: String (TX-...)\\- invoiceNumber: FC/2627/000001\\- grandTotal: Decimal (incl. GST)\\- pointsRedeemed, pointsValue\\- amountDue: Decimal\\- paymentMethod: upi|card|cash\\- paymentStatus: paid|pending\\- cashReceived, changeReturned\\- pointsEarned: Integer\\- returnedQuantities: Map\\- refundStatus: none|partial|full
+\nodepart{three}+ receipt(): Invoice + sharePath\\+ settle(bill, points, payment)\\+ earnOn()};
+\node[cls] (shift) at (14.4,-8.8) {\cname{CashShift}\nodepart{two}
+- id: Integer\\- cashierId: Integer\\- openingCash: Decimal\\- openedAt, closedAt: DateTime\\- countedCash: Decimal [0..1]
+\nodepart{three}+ collectCash(bill, amt): change\\+ cashInDrawer() = opening\\\ \ + cashSales \textminus\ cashRefunded\\+ summary(): Report\\+ close(counted)\\+ handoverFrom(lastClosed)};
+\node[cls] (cashier) at (21.6,-8.8) {\cname{Cashier}\nodepart{two}
+- id: Integer\\- email: String \{unique\}\\- name: String\\- passwordHash: String (scrypt)\\- active: Boolean
+\nodepart{three}+ login(email, pwd): Token\\+ drawersToday(): Drawer[]};
+% ---------- row 3 ----------
+\node[svc] (gw) at (0,-18.0) {\stereo{service}{PaymentGateway}\nodepart{two}
++ createOrder(amountDue)\\+ verifySignature(order, payment, sig)\\+ refund(paymentId, amount): refundId};
+\node[svc] (pe) at (7.2,-18.0) {\stereo{service}{PricingEngine}\nodepart{two}
++ buildBill(lines, pointsRedeemed)\\\ \ : Bill \{groups, GST slabs,\\\ \ \ \ roundOff, grandTotal, amountDue\}\\+ buildCreditNote(invoiceItems,\\\ \ returns): CreditNote lines};
+\node[cls] (cn) at (14.4,-18.0) {\cname{CreditNote (Refund)}\nodepart{two}
+- id: String (CN-...)\\- creditNoteNumber: FC/CN/2627/000001\\- transactionId: String\\- items: ReturnLine[] \{itemId, qty\}\\- taxBreakdown: GST credited per slab\\- method: cash|original\\- refundAmount: Decimal\\- pointsReturned, pointsReversed\\- reason: String\\- gateway.refundId [0..1]
+\nodepart{three}+ quote(items, method)\\+ process(): restock + ledger};
+\node[svc] (ls) at (21.6,-18.0) {\stereo{service}{LoyaltyService}\nodepart{two}
++ pointsFor(amountDue) = floor(amt / 50)\\+ maxRedeemable(customer, total)\\\ \ = min(balance, 50\% of total)\\+ redeem / earn / creditBack / reverse};
+\node[svc] (ins) at (0,-22.3) {\stereo{service}{InsightsService}\nodepart{two}
++ summaryFor(customer): spend by month,\\\ \ favourite showroom, order again,\\\ \ refunds, points history};
+% ---------- associations ----------
+\draw[rel] (cust.east) -- node[m,above,pos=0.1]{1} node[m,above,pos=0.9]{*} node[r,below]{owns} (cust.east -| sess.west);
+\draw[comp] (sess.east) -- node[m,above,pos=0.9]{*} node[r,below]{contains} (sess.east -| line.west);
+\draw[rel] (line.east) -- node[m,above,pos=0.1]{*} node[m,above,pos=0.9]{1} node[r,below]{refers to} (line.east -| prod.west);
+\draw[rel] (sess.south) -- node[m,right,pos=0.1]{1} node[m,right,pos=0.9]{0..1} node[r,left]{checks out as} (txn.north);
+\draw[rel] (cust.south) -- node[m,right,pos=0.1]{1} node[m,right,pos=0.9]{*} node[r,left]{balance history} (led.north);
+\draw[rel] ($(cust.east)+(0,-1.3)$) -- node[m,above,pos=0.3]{1} ++(0.9,0) |- node[r,pos=0.25,right]{pays} node[m,pos=0.95,above]{*} ($(txn.west)+(0,-0.6)$);
+\draw[rel] ($(txn.east)+(0,-0.6)$) -- node[m,above,pos=0.1]{*} node[m,above,pos=0.9]{1} node[r,below]{collected in} ($(txn.east)+(0,-0.6)$ -| shift.west);
+\draw[rel] (shift.east) -- node[m,above,pos=0.1]{*} node[m,above,pos=0.9]{1} node[r,below]{opens} (shift.east -| cashier.west);
+\draw[rel] ($(txn.east)+(0,-2.2)$) -- node[m,above,pos=0.3]{1} ++(0.9,0) |- node[r,pos=0.25,right]{refunded by} node[m,pos=0.9,above]{*} ($(cn.west)+(0,-0.9)$);
+\draw[rel] (cn.north) -- node[m,right,pos=0.1]{*} node[m,right,pos=0.9]{1} node[r,left]{issued in} (shift.south);
+% ---------- dependencies ----------
+\draw[dep] (txn.south) -- node[r,right]{\guillemotleft use\guillemotright} (pe.north);
+\draw[dep] (cn.west) -- node[r,above]{\guillemotleft use\guillemotright} (cn.west -| pe.east);
+\draw[dep] (cn.east) -- node[r,above]{\guillemotleft use\guillemotright} (cn.east -| ls.west);
+\draw[dep] ($(txn.west)+(0,-2.2)$) -- ++(-0.9,0) |- node[r,pos=0.25,left]{\guillemotleft use\guillemotright} ($(gw.east)+(0,-0.3)$);
+\draw[dep] ($(txn.east)+(0,-3.4)$) -- ++(0.5,0) |- node[r,pos=0.75,above]{\guillemotleft use\guillemotright} ($(ls.north)+(0,0.6)$) -- (ls.north);
+\draw[dep] (ins.north) -- node[r,right]{\guillemotleft reads\guillemotright} (gw.south);
+\end{tikzpicture}
+\end{document}

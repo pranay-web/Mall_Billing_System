@@ -1,4 +1,4 @@
-import { ArrowRight, Banknote, ChevronRight, CreditCard, Keyboard, LayoutGrid, ReceiptText, ScanBarcode, ShoppingBag, Smartphone } from 'lucide-react';
+import { ArrowRight, Banknote, ChevronRight, CreditCard, Download, Keyboard, LayoutGrid, ReceiptText, ScanBarcode, ShoppingBag, Smartphone, Sparkles, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Barcode } from '../../components/Barcode.jsx';
 import { ShowroomIcon } from '../../components/ProductTile.jsx';
@@ -8,6 +8,7 @@ import { Card, Eyebrow, Skeleton } from '../../components/ui/misc.jsx';
 import { useShop } from '../../context/ShopContext.jsx';
 import { api } from '../../lib/api.js';
 import { formatDateTime, formatINR, formatPhone, pluralize } from '../../lib/format.js';
+import { usePwaInstall } from '../../lib/pwa.js';
 import { navigate } from '../../lib/router.js';
 import CatalogSheet from './CatalogSheet.jsx';
 
@@ -17,7 +18,7 @@ const greeting = () => {
 };
 
 /** Landing screen after sign-in: what's in the bag, how to add more, where to shop, past bills. */
-export default function CustomerHome({ onOpenReceipts }) {
+export default function CustomerHome() {
   const { customer, cart, catalog, loadCatalog, config } = useShop();
   const [sheet, setSheet] = useState(null); // null | { mode, category }
   const [receipts, setReceipts] = useState({ loading: true, list: [] });
@@ -46,10 +47,19 @@ export default function CustomerHome({ onOpenReceipts }) {
       <header>
         <Eyebrow>{config?.mall.name ?? 'FlashCart'}</Eyebrow>
         <h1 className="mt-1 text-2xl font-semibold text-zinc-900 sm:text-[30px]">{greeting()}</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Signed in as <span className="font-medium text-zinc-700 tabular-nums">{formatPhone(customer?.phone)}</span>
+        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500">
+          <span>
+            Signed in as <span className="font-medium text-zinc-700 tabular-nums">{formatPhone(customer?.phone)}</span>
+          </span>
+          {cart?.loyalty && (
+            <button onClick={() => navigate('/shop/account')} className="inline-flex items-center gap-1 font-semibold text-amber-700 hover:text-amber-800">
+              <Sparkles className="size-3.5 text-amber-500" /> {cart.loyalty.balance} points · worth {formatINR(cart.loyalty.balance, { whole: true })}
+            </button>
+          )}
         </p>
       </header>
+
+      <InstallBanner />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Primary action */}
@@ -91,7 +101,7 @@ export default function CustomerHome({ onOpenReceipts }) {
                   {summary?.units ? `${pluralize(summary.units, 'item')} · ${pluralize(cart.groups.length, 'store')}` : 'Empty for now'}
                 </p>
               </div>
-              <p className="text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums">{formatINR(summary?.grandTotal ?? 0)}</p>
+              <p className="text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums">{formatINR(summary?.amountDue ?? summary?.grandTotal ?? 0)}</p>
             </div>
             {cart?.groups.length ? (
               <ul className="mt-4 space-y-2.5">
@@ -160,7 +170,7 @@ export default function CustomerHome({ onOpenReceipts }) {
           <div className="flex items-center justify-between px-5 pt-5">
             <Eyebrow>Recent receipts</Eyebrow>
             {receipts.list.length > 0 && (
-              <button onClick={onOpenReceipts} className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
+              <button onClick={() => navigate('/shop/account')} className="text-[13px] font-semibold text-brand-600 hover:text-brand-700">
                 View all
               </button>
             )}
@@ -185,7 +195,7 @@ export default function CustomerHome({ onOpenReceipts }) {
                         {formatDateTime(r.issuedAt)} · {pluralize(r.units, 'item')}
                       </p>
                     </div>
-                    <TransactionStatusBadge status={r.status} />
+                    <TransactionStatusBadge status={r.status} refundStatus={r.refundStatus} />
                     <span className="w-20 text-right text-sm font-semibold text-zinc-900 tabular-nums">{formatINR(r.grandTotal, { whole: true })}</span>
                     <ChevronRight className="size-4 text-zinc-300" />
                   </button>
@@ -214,10 +224,43 @@ export default function CustomerHome({ onOpenReceipts }) {
           <p className="mt-4 text-[13px] leading-relaxed text-zinc-500">
             Paying cash? Check out with <span className="font-medium text-zinc-700">Cash at the cash desk</span>, then show the bill barcode or tell the cashier your phone number.
           </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-zinc-500">
+            Changed your mind? Returns are accepted at the cash desk with a GST credit note — refund in cash or back to your card / UPI.
+          </p>
         </Card>
       </div>
 
       <CatalogSheet open={sheet !== null} mode={sheet?.mode ?? 'browse'} initialCategory={sheet?.category ?? 'all'} onClose={() => setSheet(null)} />
+    </div>
+  );
+}
+
+const INSTALL_DISMISSED = 'flashcart.install.dismissed';
+
+/** One-line nudge to install the app, shown only where the browser can actually install it. */
+function InstallBanner() {
+  const { canInstall, installed, install } = usePwaInstall();
+  const [hidden, setHidden] = useState(() => sessionStorage.getItem(INSTALL_DISMISSED) === '1');
+  if (hidden || installed || !canInstall) return null;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-brand-200/70 bg-brand-50/70 px-4 py-3 text-sm text-brand-900 animate-fade-up">
+      <Download className="size-5 shrink-0 text-brand-600" />
+      <p className="min-w-0 flex-1">
+        <span className="font-semibold">Install FlashCart</span> — scan and pay from your home screen, even when the mall Wi-Fi drops.
+      </p>
+      <Button size="sm" onClick={install}>
+        Install
+      </Button>
+      <button
+        onClick={() => {
+          sessionStorage.setItem(INSTALL_DISMISSED, '1');
+          setHidden(true);
+        }}
+        className="rounded-md p-1 text-brand-900/50 hover:text-brand-900"
+        aria-label="Dismiss"
+      >
+        <X className="size-4" />
+      </button>
     </div>
   );
 }

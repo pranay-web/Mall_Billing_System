@@ -1,0 +1,34 @@
+\documentclass[tikz,border=6pt]{standalone}
+\input{preamble}
+\input{seqlib}
+\begin{document}
+\begin{tikzpicture}
+\def\C{0}\def\F{3.6}\def\B{7.6}\def\D{11.6}\def\R{15.2}
+\lifeline{c}{\C}{Customer}{-16.6}
+\lifeline{f}{\F}{Frontend\\(React PWA)}{-16.6}
+\lifeline{b}{\B}{Backend\\(Express)}{-16.6}
+\lifeline{d}{\D}{SQLite\\database}{-16.6}
+\lifeline{r}{\R}{Razorpay\\Gateway}{-16.6}
+\msg{-1.1}{\C}{\F}{1. choose points to redeem}
+\msg{-1.9}{\F}{\B}{2. PUT /cart/:id/points \{points\}}
+\msg{-2.7}{\B}{\D}{3. read products + points balance}
+\selfmsg{-3.4}{\B}{4. buildBill(): GST, round-off,\\cap points at 50\% \textrightarrow\ amountDue}
+\ret{-4.5}{\B}{\F}{5. cart \{grandTotal, pointsValue, amountDue\}}
+\msg{-5.3}{\C}{\F}{6. tap Pay (UPI / Card)}
+\msg{-6.1}{\F}{\B}{7. POST /razorpay/orders}
+\msg{-6.9}{\B}{\R}{8. orders.create(amountDue)}
+\ret{-7.7}{\R}{\B}{9. order\_id}
+\ret{-8.5}{\B}{\F}{10. \{orderId, amount, keyId\}}
+\msg{-9.3}{\F}{\R}{11. open Checkout (order\_id)}
+\msg{-10.1}{\C}{\R}{12. approve UPI / enter card}
+\ret{-10.9}{\R}{\F}{13. payment\_id + signature}
+\msg{-11.7}{\F}{\B}{14. POST /razorpay/verify}
+\selfmsg{-12.3}{\B}{15. verify HMAC-SHA256}
+\altframe{-1.2}{-13.0}{16.4}{-16.4}{-15.2}{[signature valid]}
+\msg{-13.6}{\B}{\D}{16. save bill, stock \textminus\ qty, redeem + earn points (ledger)}
+\ret{-14.3}{\B}{\F}{17. receipt \{invoice, points earned, share link\}}
+\ret{-14.9}{\F}{\C}{18. show receipt}
+\node[font=\footnotesize\itshape,anchor=west] at (-1.0,-15.45) {[invalid]};
+\ret{-15.95}{\B}{\F}{400: no invoice issued, points untouched}
+\end{tikzpicture}
+\end{document}

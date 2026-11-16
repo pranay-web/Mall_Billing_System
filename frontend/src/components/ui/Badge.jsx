@@ -45,12 +45,16 @@ export const GstTag = ({ rate, className = '' }) => (
 const STATUS = {
   paid: { tone: 'success', label: 'Paid' },
   awaiting_payment: { tone: 'warning', label: 'Pay cash at desk' },
+  partial: { tone: 'brand', label: 'Partly refunded' },
+  full: { tone: 'neutral', label: 'Refunded' },
 };
 
-export const TransactionStatusBadge = ({ status, className = '' }) => {
-  const s = STATUS[status] ?? { tone: 'neutral', label: status };
+/** Paid / awaiting, or the refund state once anything on the bill has been returned. */
+export const TransactionStatusBadge = ({ status, refundStatus = 'none', className = '' }) => {
+  const key = refundStatus && refundStatus !== 'none' ? refundStatus : status;
+  const s = STATUS[key] ?? { tone: 'neutral', label: status };
   return (
-    <Badge tone={s.tone} dot pulse={status === 'awaiting_payment'} className={className}>
+    <Badge tone={s.tone} dot pulse={key === 'awaiting_payment'} className={className}>
       {s.label}
     </Badge>
   );

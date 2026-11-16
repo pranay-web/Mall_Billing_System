@@ -33,10 +33,22 @@ const toShift = (row) =>
   row && {
     id: row.id,
     cashierId: row.cashier_id,
+    cashierName: row.cashier_name ?? null,
     openedAt: row.opened_at,
     openingCash: row.opening_cash,
     closedAt: row.closed_at,
     countedCash: row.counted_cash,
+  };
+
+const toLedgerEntry = (row) =>
+  row && {
+    id: row.id,
+    delta: row.delta,
+    balanceAfter: row.balance_after,
+    kind: row.kind,
+    reference: row.reference,
+    note: row.note,
+    createdAt: row.created_at,
   };
 
 /**
@@ -86,9 +98,35 @@ export const createSqliteStore = ({ db }) => {
 
     openShiftFor: db.prepare('SELECT * FROM cash_shifts WHERE cashier_id = ? AND closed_at IS NULL ORDER BY id DESC LIMIT 1'),
     lastClosedShiftFor: db.prepare('SELECT * FROM cash_shifts WHERE cashier_id = ? AND closed_at IS NOT NULL ORDER BY id DESC LIMIT 1'),
+    lastClosedShiftAny: db.prepare(`
+      SELECT s.*, c.name AS cashier_name FROM cash_shifts s JOIN cashiers c ON c.id = s.cashier_id
+      WHERE s.closed_at IS NOT NULL ORDER BY s.closed_at DESC LIMIT 1`),
+    shiftsSince: db.prepare(`
+      SELECT s.*, c.name AS cashier_name FROM cash_shifts s JOIN cashiers c ON c.id = s.cashier_id
+      WHERE s.closed_at IS NULL OR s.opened_at >= ? ORDER BY s.opened_at ASC`),
     shiftById: db.prepare('SELECT * FROM cash_shifts WHERE id = ?'),
     insertShift: db.prepare('INSERT INTO cash_shifts (cashier_id, opened_at, opening_cash) VALUES (?, ?, ?)'),
     closeShift: db.prepare('UPDATE cash_shifts SET closed_at = ?, counted_cash = ? WHERE id = ? AND closed_at IS NULL'),
+
+    insertRefund: db.prepare(`
+      INSERT INTO refunds (id, credit_note_number, transaction_id, customer_id, cashier_id, shift_id, created_at, amount, method, data)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+    refundById: db.prepare('SELECT data FROM refunds WHERE id = ?'),
+    refundsForTxn: db.prepare('SELECT data FROM refunds WHERE transaction_id = ? ORDER BY created_at ASC'),
+    refundsForShift: db.prepare('SELECT data FROM refunds WHERE shift_id = ? ORDER BY created_at DESC'),
+    refundsForCustomer: db.prepare('SELECT data FROM refunds WHERE customer_id = ? ORDER BY created_at DESC LIMIT ?'),
+
+    pointsOf: db.prepare('SELECT points FROM customers WHERE id = ?'),
+    setPoints: db.prepare('UPDATE customers SET points = ? WHERE id = ?'),
+    insertLedger: db.prepare(`
+      INSERT INTO loyalty_ledger (customer_id, delta, balance_after, kind, reference, note, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`),
+    ledgerFor: db.prepare('SELECT * FROM loyalty_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT ?'),
+    ledgerTotals: db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN delta > 0 THEN delta END), 0) AS earned,
+        COALESCE(SUM(CASE WHEN delta < 0 THEN -delta END), 0) AS spent
+      FROM loyalty_ledger WHERE customer_id = ?`),
   };
 
   const parse = (row) => (row ? JSON.parse(row.data) : null);
@@ -187,9 +225,56 @@ export const createSqliteStore = ({ db }) => {
       return `FC/${fy}/${String(value).padStart(6, '0')}`;
     },
 
+    /** Sequential credit note number per financial year, e.g. `FC/CN/2627/000003`. */
+    nextCreditNoteNumber(date = new Date()) {
+      const fy = financialYear(date);
+      const { value } = q.nextCounter.get(`creditnote:${fy}`);
+      return `FC/CN/${fy}/${String(value).padStart(6, '0')}`;
+    },
+
+    // ---------- Refunds (credit notes) ----------
+    saveRefund(note) {
+      q.insertRefund.run(
+        note.id,
+        note.creditNoteNumber,
+        note.transactionId,
+        note.customerId ?? null,
+        note.cashierId ?? null,
+        note.shiftId ?? null,
+        note.createdAt,
+        note.summary.refundAmount,
+        note.method,
+        JSON.stringify(note),
+      );
+      return note;
+    },
+    getRefund: (id) => parse(q.refundById.get(id)),
+    hasRefund: (id) => Boolean(q.refundById.get(id)),
+    listRefundsForTransaction: (transactionId) => q.refundsForTxn.all(transactionId).map(parse),
+    listShiftRefunds: (shiftId) => q.refundsForShift.all(shiftId).map(parse),
+    listCustomerRefunds: (customerId, limit = 20) => q.refundsForCustomer.all(customerId, limit).map(parse),
+
+    // ---------- Loyalty points ----------
+    getPoints: (customerId) => q.pointsOf.get(customerId)?.points ?? 0,
+    /** Applies a points movement and records it in the ledger; returns the new balance. */
+    addPoints(customerId, delta, { kind, reference = null, note = null }) {
+      const balance = Math.max(0, (q.pointsOf.get(customerId)?.points ?? 0) + delta);
+      q.setPoints.run(balance, customerId);
+      q.insertLedger.run(customerId, delta, balance, kind, reference, note, new Date().toISOString());
+      return balance;
+    },
+    listLedger: (customerId, limit = 20) => q.ledgerFor.all(customerId, limit).map(toLedgerEntry),
+    ledgerTotals: (customerId) => {
+      const row = q.ledgerTotals.get(customerId);
+      return { earned: Number(row?.earned ?? 0), spent: Number(row?.spent ?? 0) };
+    },
+
     // ---------- Cash shifts ----------
     getOpenShift: (cashierId) => toShift(q.openShiftFor.get(cashierId)) ?? null,
     getLastClosedShift: (cashierId) => toShift(q.lastClosedShiftFor.get(cashierId)) ?? null,
+    getLastClosedShiftAny: () => toShift(q.lastClosedShiftAny.get()) ?? null,
+    /** Every drawer open right now, plus those opened since `sinceIso` (today's closed ones). */
+    listShiftsSince: (sinceIso) => q.shiftsSince.all(sinceIso).map(toShift),
     getShift: (id) => toShift(q.shiftById.get(id)) ?? null,
     openShift(cashierId, openingCash) {
       const { lastInsertRowid } = q.insertShift.run(cashierId, new Date().toISOString(), openingCash);

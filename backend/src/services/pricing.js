@@ -14,46 +14,81 @@ const showroomOrder = new Map(SHOWROOMS.map((s, i) => [s.id, i]));
  * The payable amount is rounded to the nearest rupee with an explicit round-off line,
  * as is customary on Indian retail invoices.
  *
+ * FlashCart points redeemed on the bill (`pointsRedeemed`, in ₹) are treated like a
+ * voucher: the invoice total and its GST are unchanged, and `amountDue` is what the
+ * customer still pays with UPI / card / cash.
+ *
  * @param {Array<{ itemId: string, product: object, quantity: number, addedAt?: string }>} lines
  */
-export const buildBill = (lines) => {
-  const priced = lines.map(({ itemId, product, quantity, addedAt }) => {
-    const rate = product.gstRate;
-    let unitPrice, unitMrp, subtotal, tax;
-    if (product.mrp != null) {
-      unitMrp = toPaise(product.mrp);
-      const total = unitMrp * quantity;
-      subtotal = Math.round((total * 100) / (100 + rate));
-      tax = total - subtotal;
-      unitPrice = Math.round((unitMrp * 100) / (100 + rate));
-    } else {
-      unitPrice = toPaise(product.price);
-      unitMrp = Math.round((unitPrice * (100 + rate)) / 100);
-      subtotal = unitPrice * quantity;
-      tax = Math.round((subtotal * rate) / 100);
-    }
+export const buildBill = (lines, { pointsRedeemed = 0 } = {}) => aggregate(lines.map(priceLine), { pointsRedeemed });
+
+/**
+ * Prices a return against the original invoice lines: each returned unit gets its
+ * exact pro-rata share of the line's taxable value and tax, so a full return
+ * reverses the invoice to the paisa and GST is credited slab by slab.
+ *
+ * @param {Array<object>} invoiceItems  `bill.items` of the original invoice (₹ values)
+ * @param {Array<{ itemId: string, quantity: number }>} returns
+ */
+export const buildCreditNote = (invoiceItems, returns) => {
+  const priced = returns.map(({ itemId, quantity }) => {
+    const item = invoiceItems.find((i) => i.itemId === itemId);
+    const share = (rupees) => Math.round((toPaise(rupees) * quantity) / item.quantity);
+    const subtotal = share(item.subtotal);
+    const tax = share(item.tax);
     return {
-      itemId,
-      productId: product.id,
-      barcode: product.barcode,
-      sku: product.sku,
-      name: product.name,
-      description: product.description,
-      hsn: product.hsn,
-      category: product.category,
-      showroomId: product.showroomId,
-      showroom: product.showroom,
-      gstRate: product.gstRate,
+      ...item,
       quantity,
-      unitPrice,
-      unitMrp,
+      originalQuantity: item.quantity,
+      unitPrice: toPaise(item.unitPrice),
+      unitMrp: toPaise(item.unitMrp),
       subtotal,
       tax,
       total: subtotal + tax,
-      addedAt,
     };
   });
+  return aggregate(priced);
+};
 
+const priceLine = ({ itemId, product, quantity, addedAt }) => {
+  const rate = product.gstRate;
+  let unitPrice, unitMrp, subtotal, tax;
+  if (product.mrp != null) {
+    unitMrp = toPaise(product.mrp);
+    const total = unitMrp * quantity;
+    subtotal = Math.round((total * 100) / (100 + rate));
+    tax = total - subtotal;
+    unitPrice = Math.round((unitMrp * 100) / (100 + rate));
+  } else {
+    unitPrice = toPaise(product.price);
+    unitMrp = Math.round((unitPrice * (100 + rate)) / 100);
+    subtotal = unitPrice * quantity;
+    tax = Math.round((subtotal * rate) / 100);
+  }
+  return {
+    itemId,
+    productId: product.id,
+    barcode: product.barcode,
+    sku: product.sku,
+    name: product.name,
+    description: product.description,
+    hsn: product.hsn,
+    category: product.category,
+    showroomId: product.showroomId,
+    showroom: product.showroom,
+    gstRate: product.gstRate,
+    quantity,
+    unitPrice,
+    unitMrp,
+    subtotal,
+    tax,
+    total: subtotal + tax,
+    addedAt,
+  };
+};
+
+/** Groups priced lines (integer paise) by showroom and GST slab and totals them. */
+const aggregate = (priced, { pointsRedeemed = 0 } = {}) => {
   // Group by showroom, in the mall's canonical showroom order.
   const groupMap = new Map();
   for (const item of priced) {
@@ -96,6 +131,8 @@ export const buildBill = (lines) => {
   const totalTax = sum(priced, 'tax');
   const exact = subtotal + totalTax;
   const grandTotal = Math.round(exact / 100) * 100;
+  const pointsValue = Math.min(grandTotal, Math.max(0, Math.round(pointsRedeemed)) * 100);
+  const amountDue = grandTotal - pointsValue;
 
   const summary = {
     lineCount: priced.length,
@@ -106,10 +143,13 @@ export const buildBill = (lines) => {
     totalTax,
     roundOff: grandTotal - exact,
     grandTotal,
+    pointsRedeemed: pointsValue / 100,
+    pointsValue,
+    amountDue,
   };
 
   return {
-    amountPaise: grandTotal,
+    amountPaise: amountDue,
     items: priced.map(itemToRupees),
     groups: groups.map((g) => ({
       ...g,
@@ -133,6 +173,8 @@ export const buildBill = (lines) => {
       totalTax: toRupees(summary.totalTax),
       roundOff: toRupees(summary.roundOff),
       grandTotal: toRupees(summary.grandTotal),
+      pointsValue: toRupees(summary.pointsValue),
+      amountDue: toRupees(summary.amountDue),
     },
   };
 };

@@ -56,6 +56,15 @@ export const config = Object.freeze({
   sessionTtlMinutes: int(process.env.SESSION_TTL_MINUTES, 240),
   maxLineQuantity: int(process.env.MAX_LINE_QUANTITY, 25),
 
+  // FlashCart points: earn 1 point per `earnPerRupees` paid, 1 point = ₹1 off, up to `maxRedeemPercent` of a bill.
+  loyalty: Object.freeze({
+    earnPerRupees: Math.max(1, int(process.env.LOYALTY_EARN_PER_RUPEES, 50)),
+    maxRedeemPercent: Math.min(100, Math.max(0, int(process.env.LOYALTY_MAX_REDEEM_PERCENT, 50))),
+  }),
+
+  // Returns are accepted at the cash desk within this many days of the bill. Food can't be returned.
+  returnWindowDays: Math.max(1, int(process.env.RETURN_WINDOW_DAYS, 30)),
+
   razorpay: Object.freeze({
     mode: paymentMode,
     keyId: paymentMode === 'mock' ? 'rzp_mock_flashcart' : keyId,

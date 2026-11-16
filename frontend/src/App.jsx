@@ -11,18 +11,22 @@ import { navigate, useRoute } from './lib/router.js';
 const CustomerShell = lazy(() => import('./features/customer/CustomerShell.jsx'));
 const CashDesk = lazy(() => import('./features/pos/CashDesk.jsx'));
 const ReceiptView = lazy(() => import('./features/receipt/ReceiptView.jsx'));
+const CreditNoteView = lazy(() => import('./features/receipt/CreditNoteView.jsx'));
 const LabelsPage = lazy(() => import('./features/labels/LabelsPage.jsx'));
 
 const TITLES = {
   login: 'Sign in',
   shop: 'Scan & Shop',
   receipt: 'Receipt',
+  credit: 'Credit note',
   pos: 'Cash Desk',
   labels: 'Product Labels',
 };
 
+const SHOP_TABS = ['scan', 'bag', 'checkout', 'account'];
+
 function Routes() {
-  const { segments, path } = useRoute();
+  const { segments, path, query } = useRoute();
   const [root, sub] = segments;
 
   useEffect(() => {
@@ -38,16 +42,27 @@ function Routes() {
     case 'shop':
       return (
         <RequireCustomer path={path}>
-          <CustomerShell tab={['scan', 'bag', 'checkout'].includes(sub) ? sub : 'home'} />
+          <CustomerShell tab={SHOP_TABS.includes(sub) ? sub : 'home'} />
         </RequireCustomer>
       );
-    case 'receipt':
-      return sub ? (
+    case 'receipt': {
+      if (!sub) return <Redirect to="/shop" />;
+      // A share link (`?s=token`) opens the receipt read-only, no sign-in needed.
+      const share = query.get('s');
+      if (share) return <ReceiptView key={`${sub}:shared`} transactionId={sub} shareToken={share} />;
+      return (
         <RequireCustomer path={path}>
           <ReceiptView key={sub} transactionId={sub} />
         </RequireCustomer>
+      );
+    }
+    case 'credit':
+      return sub ? (
+        <RequireCustomer path={path}>
+          <CreditNoteView key={sub} creditNoteId={sub} />
+        </RequireCustomer>
       ) : (
-        <Redirect to="/shop" />
+        <Redirect to="/shop/account" />
       );
     case 'pos':
       return <CashDesk />;

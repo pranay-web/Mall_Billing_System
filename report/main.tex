@@ -67,7 +67,7 @@
   \vspace{0.7in}
   {\LARGE\bfseries FlashCart: Unified Mall Checkout\par}
   \vspace{6pt}
-  Scan products across every showroom, pay once, get one GST invoice\par
+  Scan products across every showroom, pay once, earn points, return with a credit note\par
   \vspace{1.1in}
   {\large\bfseries Submitted by:\par}
   \vspace{8pt}
@@ -82,7 +82,7 @@
   \vspace{6pt}
   Jhonsy Bansal\par
   \vfill
-  {\large Mid-Semester Evaluation\par}
+  {\large Final Evaluation\par}
   \vspace{4pt}
   {\large\bfseries Computer Science and Engineering Department\par}
   \vspace{4pt}
@@ -103,14 +103,19 @@ with its own GST calculation. \textbf{FlashCart} replaces these counters with on
 checkout. The shopper signs in with a mobile number and scans the barcode on any product tag
 with the phone camera. Every item from every showroom lands in one \emph{unified bag}, which
 is paid once (UPI or card through Razorpay, or cash at a central desk) for a single GST
-invoice.
+invoice. The final increment closes the loop after the sale: every bill earns
+\emph{FlashCart points} that can be spent on the next one, any paid bill can be returned at
+the cash desk against a GST credit note, receipts can be shared as a link or on WhatsApp,
+and the app installs on the phone with a dark mode.
 
 \subsection{Problem Statement}
 Multi-showroom retail suffers from repeated queues and payments per store, fragmented
 receipts that are hard to audit for GST, manual cash handling with change errors and no
-reliable end-of-day drawer total, and carts that are lost when a device changes. The project
-builds a web-based unified checkout that removes these problems without new hardware in the
-showrooms, using the EAN-13 barcodes already printed on retail tags.
+reliable end-of-day drawer total, and carts that are lost when a device changes. Returns are
+handled by hand (no credit note, stock not restored), loyalty schemes are per store, and a
+customer has no view of what they spend. The project builds a web-based unified checkout that
+removes these problems without new hardware in the showrooms, using the EAN-13 barcodes already
+printed on retail tags.
 
 \section{Project Objectives}
 \begin{enumerate}[leftmargin=*]
@@ -123,7 +128,13 @@ showrooms, using the EAN-13 barcodes already printed on retail tags.
   \item \textbf{Objective 4:} An email-and-password cash desk that shows the change to return
         and the cash left in the drawer at day end.
   \item \textbf{Objective 5:} Persist all data in a database and cover the business rules
-        with automated tests, delivered in three iterations (Section~\ref{sec:sdlc}).
+        with automated tests, delivered in four iterations (Section~\ref{sec:sdlc}).
+  \item \textbf{Objective 6:} A loyalty scheme (\emph{FlashCart points}) earned on every paid
+        bill and redeemable at checkout, and returns at the cash desk with a GST credit note,
+        restocking, a cash or card/UPI refund and the points unwound correctly.
+  \item \textbf{Objective 7:} A better everyday experience: shareable receipts, a spend summary
+        with one-tap re-ordering, several cashiers with their own drawers and shift handover,
+        and an installable app with dark mode.
 \end{enumerate}
 
 % =====================================================================
@@ -138,9 +149,12 @@ FlashCart follows a three-tier client--server architecture
 \emph{customer app} on the shopper's phone, and the \emph{cash desk} on a counter tablet or
 laptop. Both talk JSON over HTTPS to one Express REST API, and every protected call carries a
 signed bearer token. The API owns all business rules: pricing, stock, payment
-verification and cash accounting. Clients never send amounts, they only send intents.
-Durable data lives in an SQLite database, while short-lived carts and gateway orders are kept
-in memory. Online payments go through Razorpay~\cite{razorpay}.
+verification, cash accounting, points and refunds. Clients never send amounts, they only send
+intents. Durable data lives in an SQLite database (now including credit notes and a points
+ledger), while short-lived carts and gateway orders are kept in memory. Online payments go
+through Razorpay~\cite{razorpay}. The customer app is a progressive web app~\cite{pwa}: a
+service worker caches the application shell so it installs on the phone and opens offline,
+and receipt share links are signed with HMAC so they open read-only without a sign-in.
 
 \begin{figure}[!htb]
   \centering
@@ -160,7 +174,9 @@ in memory. Online payments go through Razorpay~\cite{razorpay}.
         Razorpay test-mode dashboard, oxlint, and the built-in \texttt{node:test} runner.
   \item \textbf{Libraries:} Tailwind CSS~4, Lucide icons and Axios for the UI; ZXing-C++
         compiled to WebAssembly for barcode reading~\cite{zxing,shapedetect}; JsBarcode
-        for bill barcodes; the Razorpay Node SDK, uuid and dotenv on the server.
+        for bill barcodes; the Web Share API, a web app manifest and a service worker for
+        sharing and installation~\cite{pwa}; the Razorpay Node SDK, uuid and dotenv on the
+        server.
 \end{itemize}
 
 \section{Implementation Details}
@@ -197,7 +213,9 @@ it or typing the customer's phone number. Entering the cash received shows the
 $2\times500+100+5+1$. Short payments are rejected. The drawer panel shows
 \emph{opening cash + cash sales}. At closing, the counted cash is compared with that figure
 to report any overage or shortage, and a printable day report is produced. The customer's
-receipt turns \emph{Paid} as soon as the cash is recorded.
+receipt turns \emph{Paid} as soon as the cash is recorded. Each cashier has their own drawer: a sidebar lists
+every desk opened today with its live cash total, and a cashier starting a shift can take over
+the counted float of the colleague who closed last.
 
 \subsection{Module 4: Authentication and Database}
 Customers sign in with a 10-digit mobile number; cashiers with an email and a salted scrypt
@@ -211,85 +229,163 @@ rate-limited. Table~\ref{tab:db} lists the schema.
   \begin{tabular}{|l|p{0.62\textwidth}|}
     \hline
     \textbf{Table} & \textbf{Key columns} \\ \hline
-    customers    & phone (unique), created\_at, last\_login\_at \\ \hline
+    customers    & phone (unique), points, created\_at, last\_login\_at \\ \hline
     cashiers     & email (unique), name, password\_hash, active \\ \hline
     products     & barcode (EAN-13), name, cost, mrp, gst, type, hsn, showroom, stock \\ \hline
-    transactions & invoice no., customer, grand total, method, status, cash received, change \\ \hline
+    transactions & invoice no., customer, grand total, amount due, points redeemed/earned, method, status, cash received, change, returned quantities, refund status \\ \hline
     cash\_shifts & cashier, opening cash, opened/closed at, counted cash \\ \hline
+    refunds      & credit note no. (FC/CN/\ldots), transaction, cashier, shift, items, GST credited, method (cash / original), refund amount, points returned/reversed \\ \hline
+    loyalty\_ledger & customer, delta, balance after, kind (earn / redeem / credit / reverse), reference bill or credit note \\ \hline
   \end{tabular}
   \caption{SQLite database schema}
   \label{tab:db}
 \end{table}
 
+\subsection{Module 5: FlashCart Points}
+A customer earns one point for every Rs.~50 actually paid (points come only after a bill is
+paid, so a pending cash bill earns nothing until the cashier collects it), and one point is
+worth Rs.~1 on a later bill. At checkout a slider lets the customer apply points up to
+\emph{half} of the bill; the server re-prices the bag and caps the request against both the
+balance and that limit. Points are treated like a voucher rather than a discount: the invoice
+total and its CGST/SGST are unchanged, and only the \emph{amount due} that goes to Razorpay or
+the cash desk is reduced. Every movement (earn, redeem, credit back, reversal) is written to a
+ledger with the running balance, which the \emph{You} tab shows as history.
+
+\subsection{Module 6: Returns, Refunds and Credit Notes}
+Scanning a \emph{paid} bill at the cash desk opens a returns panel instead of the cash
+collector. The cashier picks items and quantities (food items are excluded, and only the
+quantity not yet returned is offered), a reason, and whether to refund in cash or back to the
+card/UPI the bill was paid with. The server first \emph{quotes} the credit note, then
+\emph{processes} it. Each returned unit gets its exact pro-rata share of the line's taxable
+value and GST, so a full return reverses the invoice to the paisa and GST is credited slab by
+slab; the credit note is numbered per financial year (\texttt{FC/CN/2627/000001}). Points
+redeemed on the returned portion come back as points, points earned on it are reversed, the
+items are restocked and the bill is marked partly or fully refunded, all in one SQLite
+transaction. Returns are accepted for 30 days, and a cash refund can never exceed the cash in
+that drawer, where it is recorded and reduces the end-of-day total.
+
+\subsection{Module 7: Account Insights, Sharing and the Installable App}
+The \emph{You} tab calls one summary endpoint that aggregates the customer's bills into
+monthly spend for the last six months, the favourite showroom, the most-bought items, recent
+refunds, and Food Court items bought before that can be re-ordered with one tap. Every receipt
+and credit note carries a share path signed with HMAC-SHA256; the \emph{Share}, \emph{WhatsApp}
+and \emph{Copy link} buttons use it, and anyone opening the link sees the bill read-only. The
+app ships a web app manifest, icons and a service worker that caches the application shell
+(never the API), so it installs from the browser and opens offline; a sun/moon toggle and a
+System/Light/Dark setting switch the whole palette, and receipts always print in light.
+
 \section{Software Development Life Cycle}\label{sec:sdlc}
 We followed an \textbf{iterative and incremental (agile)} SDLC~\cite{sommerville}
 (Figure~\ref{fig:sdlc}). Each iteration went through requirements, design, build, test, demo
 and review, and the review feedback set the next scope: iteration~1 (weeks 1--6) built the MVP,
-iteration~2 (weeks 7--8) added sign-in, SQLite and the cash desk, and iteration~3 (weeks 9--10)
-added the barcode engine, real products and MRP pricing.
+iteration~2 (weeks 7--8) added sign-in, SQLite and the cash desk, iteration~3 (weeks 9--10)
+added the barcode engine, real products and MRP pricing, and iteration~4 (weeks 11--12) added
+FlashCart points, returns with credit notes, receipt sharing, spend insights, multi-cashier
+drawers and the installable app with dark mode.
 
 \begin{figure}[!htb]
   \centering
   \includegraphics[width=\textwidth]{sdlc}
-  \caption{Iterative and incremental SDLC with the three delivered increments}
+  \caption{Iterative and incremental SDLC with the four delivered increments}
   \label{fig:sdlc}
 \end{figure}
 
 \section{UML Diagrams}
-The design is modelled with four UML~\cite{fowler} views: use case, sequence, activity
-and class diagrams.
+The design is modelled with four UML~\cite{fowler} views: a use case diagram, two sequence
+diagrams (payment with points, and a return), two activity diagrams (checkout, and a return at
+the desk) and a class diagram. All diagrams reflect the final system, including the new
+loyalty, returns, sharing and multi-desk features.
 
 \subsection{Use Case Diagram}
 Figure~\ref{fig:usecase} shows two primary actors and one external system. The
-\emph{Customer} signs in, scans or browses (both include \emph{Add item to bag}), manages the
-bag and checks out. \emph{Pay online} and \emph{Pay cash at the desk} extend Checkout, and
-online payment always includes signature verification with \emph{Razorpay}. The
-\emph{Cashier} signs in, starts the day, finds bills, collects cash and closes the day.
+\emph{Customer} signs in, scans, browses or re-orders (all three include \emph{Add item to
+bag}), manages the bag and checks out. \emph{Redeem FlashCart points}, \emph{Pay online} and
+\emph{Pay cash at the desk} extend Checkout, and online payment always includes signature
+verification with \emph{Razorpay}. The customer also views receipts and credit notes, shares
+a receipt, views the spend summary and points history, and installs the app. The
+\emph{Cashier} signs in, starts the day (optionally taking over a colleague's drawer), finds
+bills, collects cash, processes returns (which include issuing a GST credit note and
+restocking, and may extend to a refund to card/UPI through Razorpay), views all desks'
+drawers and closes the day.
 
-\begin{figure}[!htb]
+\begin{sidewaysfigure}
   \centering
-  \includegraphics[width=0.95\textwidth]{use_case}
+  \includegraphics[width=\textheight,height=0.9\textwidth,keepaspectratio]{use_case}
   \caption{Use case diagram}
   \label{fig:usecase}
-\end{figure}
+\end{sidewaysfigure}
 
 \subsection{UML Sequence Diagram}
-Figure~\ref{fig:sequence} traces an online payment across the customer, the React frontend,
-the Express backend, the SQLite database and Razorpay. The amount is computed only on the
-server (steps 3--5), and no invoice is written unless the signature check in step~12
-succeeds. The \texttt{alt} fragment shows both outcomes.
+Figure~\ref{fig:sequence} traces an online payment with points across the customer, the React
+frontend, the Express backend, the SQLite database and Razorpay. The points chosen in step~1
+are capped and priced only on the server (steps 3--5), the Razorpay order is created for the
+reduced \emph{amount due} (step~8), and no invoice is written unless the signature check in
+step~15 succeeds; only then are the points redeemed and the new points earned, in the same
+database transaction (step~16). The \texttt{alt} fragment shows both outcomes.
 
 \begin{figure}[!htb]
   \centering
   \includegraphics[width=\textwidth]{sequence}
-  \caption{UML sequence diagram: checkout and Razorpay payment flow}
+  \caption{UML sequence diagram: checkout with FlashCart points and Razorpay payment}
   \label{fig:sequence}
 \end{figure}
 
-\subsection{Activity Diagram}
-Figure~\ref{fig:activity} models the customer's checkout. A scan loops back on an invalid
-or out-of-stock code. The bag grows until the customer proceeds. The flow then forks
-on the payment method: online payments retry until the signature verifies, while cash bills
-wait for the cashier. Both paths merge at a single \emph{Paid} receipt.
+Figure~\ref{fig:sequence-returns} traces a return at the cash desk. The desk looks up the paid
+bill (steps 2--4), the cashier chooses what comes back, and the server \emph{quotes} the credit
+note before anything changes (steps 6--9). Processing (steps 11--15) re-validates, restocks,
+adjusts the points ledger and saves the credit note in one transaction; the \texttt{alt}
+fragment shows the refund going to the card/UPI through the gateway or out of the cash drawer.
 
 \begin{figure}[!htb]
   \centering
-  \includegraphics[width=0.86\textwidth]{activity}
-  \caption{Activity diagram: customer checkout flow}
+  \includegraphics[width=\textwidth]{sequence_returns}
+  \caption{UML sequence diagram: return and refund at the cash desk}
+  \label{fig:sequence-returns}
+\end{figure}
+
+\subsection{Activity Diagram}
+Figure~\ref{fig:activity} models the customer's checkout. A scan (or a one-tap re-order)
+loops back on an invalid or out-of-stock code. The bag grows until the customer proceeds, then
+the customer may put points towards the bill before choosing how to pay. Online payments retry
+until the signature verifies, while cash bills wait for the cashier. Both paths merge at a
+single \emph{Paid} receipt that has earned points and can be shared.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.72\textwidth]{activity}
+  \caption{Activity diagram: customer checkout flow with points}
   \label{fig:activity}
 \end{figure}
 
+Figure~\ref{fig:activity-returns} models a return at the cash desk. Unpaid bills and bills
+outside the 30-day window are turned away. After the items, reason and refund method are
+chosen, the server quotes the credit note; a cash refund larger than the drawer sends the
+cashier back to choose card/UPI or top up. Accepting the return restocks the items and updates
+the points ledger in parallel, issues the credit note, and the refund is handed back in cash or
+sent to the source.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.72\textwidth]{activity_returns}
+  \caption{Activity diagram: return and refund at the cash desk}
+  \label{fig:activity-returns}
+\end{figure}
+
 \subsection{Class Diagram}
-Figure~\ref{fig:class} is the domain model. A \emph{Customer} owns shopping sessions; a
-session is composed of \emph{CartLine}s that refer to \emph{Product}s, and checks out as
-at most one \emph{Transaction} (bill). Cash bills are collected within a \emph{CashShift}
-opened by a \emph{Cashier}. Transactions use the stateless \emph{PricingEngine} and
-\emph{PaymentGateway} services.
+Figure~\ref{fig:class} is the domain model. A \emph{Customer} (with a points balance) owns
+shopping sessions; a session is composed of \emph{CartLine}s that refer to \emph{Product}s,
+carries the points chosen for redemption, and checks out as at most one \emph{Transaction}
+(bill). A transaction records the amount due after points, the points earned and its refund
+state, is collected within a \emph{CashShift} opened by a \emph{Cashier}, and may be refunded
+by several \emph{CreditNote}s, each issued in a shift. Every points movement is a
+\emph{LoyaltyLedgerEntry} of the customer. Transactions and credit notes use the stateless
+\emph{PricingEngine}, \emph{PaymentGateway} and \emph{LoyaltyService} services, and the
+\emph{InsightsService} reads them to build the spend summary.
 
 \begin{sidewaysfigure}
   \centering
-  \includegraphics[width=\textheight]{class}
-  \caption{Class diagram: FlashCart domain model}
+  \includegraphics[width=0.96\textheight,height=0.88\textwidth,keepaspectratio]{class}
+  \caption{Class diagram: FlashCart domain model with points, credit notes and services}
   \label{fig:class}
 \end{sidewaysfigure}
 
@@ -299,15 +395,23 @@ opened by a \emph{Cashier}. Transactions use the stateless \emph{PricingEngine} 
 
 \section{Testing Methodology}
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Unit Testing:} the GST engine: slab totals, CGST/SGST split, round-off and
-        MRP back-calculation.
-  \item \textbf{Integration Testing:} 17 automated API tests (\texttt{node:test}) on the real
+  \item \textbf{Unit Testing:} the GST engine: slab totals, CGST/SGST split, round-off,
+        MRP back-calculation, points treated as a voucher (GST unchanged, amount due
+        reduced) and pro-rata credit notes (a full return reverses the invoice exactly).
+  \item \textbf{Integration Testing:} 25 automated API tests (\texttt{node:test}) on the real
         Express app with an in-memory SQLite database: roles, cart, stock limits, Razorpay
-        signatures (forged rejected, replays idempotent) and a full cash-desk day.
+        signatures (forged rejected, replays idempotent), a full cash-desk day, points earned
+        only when paid and capped at half the bill, partial and full returns (credit note
+        numbering, restock, points credited back and reversed, drawer reduced), the rules that
+        refuse food items, over-quantity, unpaid bills and refunds larger than the drawer,
+        share links (valid token opens, forged token refused) and multi-desk drawers with
+        handover.
   \item \textbf{Performance Testing:} scripted load (90 customers $\times$ 3 scans, 90 cash
-        bills, 50 collections) and barcode decode timing on photos of real tags.
+        bills, 50 collections, 29 return quotes and refunds, 29 points redemptions and
+        summaries) and barcode decode timing on photos of real tags.
   \item \textbf{User Testing:} browser end-to-end runs, a Razorpay test checkout, and real
-        tags (Puma polo, Mufti shirt, JPG parfum).
+        tags (Puma polo, Mufti shirt, JPG parfum); the points, return, share-link, dark-mode
+        and install flows were walked through in the browser on the real database.
 \end{itemize}
 
 \section{Performance Metrics}
@@ -320,11 +424,15 @@ opened by a \emph{Cashier}. Transactions use the stateless \emph{PricingEngine} 
     \textbf{Metric} & \textbf{Target} & \textbf{Achieved} \\ \hline
     Add-to-bag API latency (p95) & $<$ 100 ms & 0.45 ms \\ \hline
     Cash collection API latency (p95) & $<$ 100 ms & 1.13 ms \\ \hline
+    Points redemption API latency (p95) & $<$ 100 ms & 0.62 ms \\ \hline
+    Return quote / process API latency (p95) & $<$ 100 ms & 0.35 / 0.99 ms \\ \hline
+    Spend summary API latency (p95) & $<$ 100 ms & 0.42 ms \\ \hline
     Barcode decode per frame (WebAssembly) & $<$ 100 ms & 25--35 ms \\ \hline
     Real product tags decoded & 3 / 3 & 3 / 3 \\ \hline
     Bill total vs.\ printed MRP & exact & exact \\ \hline
-    Automated tests passing & 100\% & 17 / 17 \\ \hline
-    Initial JavaScript download (gzip) & $<$ 150 KB & 77.8 KB \\ \hline
+    Full return vs.\ original invoice & exact & exact (to the paisa) \\ \hline
+    Automated tests passing & 100\% & 25 / 25 \\ \hline
+    Initial JavaScript download (gzip) & $<$ 150 KB & 75.5 KB \\ \hline
   \end{tabular}
   \caption{Performance results summary (Apple M4, server-side latencies)}
   \label{tab:results}
@@ -332,11 +440,17 @@ opened by a \emph{Cashier}. Transactions use the stateless \emph{PricingEngine} 
 
 \section{Analysis}
 \begin{itemize}[leftmargin=*]
-  \item \textbf{Objectives:} all five met. Scanning, which \emph{failed} in the mid-term MVP,
-        now reads real retail tags, and real-tag bills equal the printed MRP.
+  \item \textbf{Objectives:} all seven met. Scanning, which \emph{failed} in the mid-term MVP,
+        now reads real retail tags, real-tag bills equal the printed MRP, and the final
+        increment added points, returns and the experience features without changing any
+        existing total.
   \item \textbf{Challenges and fixes:} the MVP's QR-oriented scanner missed 1D barcodes, so we
         moved to native / ZXing-C++ decoding. MRP tags include GST, so we added tax-inclusive
-        pricing. Data was lost on restart, so we added SQLite.
+        pricing. Data was lost on restart, so we added SQLite. Treating points as a discount
+        would have changed the taxable value, so they are modelled as a voucher that reduces
+        only the amount due. A naive refund of the line total broke on partial returns, so each
+        returned unit takes its pro-rata share of taxable value and tax in paise. A cash refund
+        once took a small drawer negative, so refunds are now limited to the cash in the drawer.
 \end{itemize}
 
 % =====================================================================
@@ -345,15 +459,22 @@ opened by a \emph{Cashier}. Transactions use the stateless \emph{PricingEngine} 
 
 \section{Summary of Work}
 FlashCart delivers a working unified checkout for multi-showroom retail. Customers sign in
-with a phone number, scan real barcodes into one bag and pay once by UPI, card or cash.
-Cashiers get a focused cash desk with change calculation and a reconciled end-of-day total.
-Data is persisted in SQLite, and the rules are covered by automated tests.
+with a phone number, scan real barcodes into one bag, pay once by UPI, card or cash, earn
+FlashCart points and spend them on the next bill. Cashiers get a focused cash desk with change
+calculation, returns with GST credit notes, a view of every drawer on the floor and a
+reconciled end-of-day total. Receipts are shareable, the app installs on the phone with a dark
+mode, data is persisted in SQLite, and the rules are covered by 25 automated tests.
 
 \section{Key Findings}
 \begin{itemize}[leftmargin=*]
   \item \textbf{Finding 1:} the EAN-13 codes already on tags are enough to run checkout.
   \item \textbf{Finding 2:} pricing must accept MRP-inclusive tags.
   \item \textbf{Finding 3:} server-side pricing and signature checks keep the client untrusted.
+  \item \textbf{Finding 4:} loyalty points fit cleanly into a GST invoice only when they are
+        modelled as a payment instrument (voucher), not as a discount on the taxable value.
+  \item \textbf{Finding 5:} a return is a first-class document: a pro-rata credit note per
+        slab, restocking and the points ledger must move together, or the drawer, stock and
+        balances drift apart.
 \end{itemize}
 
 \section{Future Work and Recommendations}
@@ -366,14 +487,18 @@ Data is persisted in SQLite, and the rules are covered by automated tests.
         RFID reader), a Raspberry Pi / ESP32 and a touchscreen, joined to the same FlashCart
         session over Wi-Fi. A load cell (HX711) would check the measured weight against the
         scanned items to catch unscanned goods, and the customer could pay on the cart itself.
-  \item \textbf{Security:} SMS OTP for phone sign-in, Razorpay webhooks, returns and refunds.
+  \item \textbf{Security and payments:} SMS OTP for phone sign-in, Razorpay webhooks so an
+        order settles if the customer closes the tab, and live gateway refunds (the desk
+        currently records the gateway refund reference in test mode).
+  \item \textbf{Loyalty:} tiers and expiry for points, and showroom-sponsored offers.
   \item \textbf{Scale:} PostgreSQL, cloud deployment and a pilot in one mall wing.
 \end{enumerate}
 
 \section{Final Remarks}
 The project covered the full software engineering cycle, from real retail requirements and UML
 models to tested increments. Letting demo feedback reshape the design made FlashCart simpler
-and more useful.
+and more useful, and the final increment showed that the server-owned pricing model could
+absorb points, refunds and credit notes without a single change to existing invoices.
 
 % =====================================================================
 \begin{thebibliography}{Som16}
@@ -397,6 +522,9 @@ and more useful.
 
 \bibitem[PJ16]{scrypt} C. Percival and S. Josefsson. \emph{The scrypt Password-Based Key
   Derivation Function}. RFC 7914. IETF, 2016.
+
+\bibitem[MDN25]{pwa} MDN Web Docs. \emph{Progressive web apps: service workers, web app
+  manifests and the Web Share API}. \url{https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps}. 2025.
 
 \bibitem[Raz25]{razorpay} Razorpay. \emph{Payment Gateway: Integration Steps and Payment
   Signature Verification}. \url{https://razorpay.com/docs/payments/payment-gateway/}. 2025.

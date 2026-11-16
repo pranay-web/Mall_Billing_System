@@ -1,15 +1,15 @@
-import { CreditCard, House, LogOut, ReceiptText, RefreshCw, ScanBarcode, ShoppingBag, WifiOff } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { CreditCard, House, LogOut, RefreshCw, ScanBarcode, ShoppingBag, Sparkles, UserRound, WifiOff } from 'lucide-react';
+import { useEffect } from 'react';
 import { AppHeader, Segmented } from '../../components/AppHeader.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { EmptyState, Spinner } from '../../components/ui/misc.jsx';
 import { useShop } from '../../context/ShopContext.jsx';
-import { formatINR, formatPhone } from '../../lib/format.js';
+import { formatINR } from '../../lib/format.js';
 import { navigate } from '../../lib/router.js';
+import AccountView from './AccountView.jsx';
 import BagView from './BagView.jsx';
 import CheckoutView from './CheckoutView.jsx';
 import CustomerHome from './CustomerHome.jsx';
-import ReceiptsSheet from './ReceiptsSheet.jsx';
 import ScanView from './ScanView.jsx';
 
 const TABS = [
@@ -17,11 +17,11 @@ const TABS = [
   { value: 'scan', label: 'Scan', icon: ScanBarcode, path: '/shop/scan' },
   { value: 'bag', label: 'Bag', icon: ShoppingBag, path: '/shop/bag' },
   { value: 'checkout', label: 'Pay', icon: CreditCard, path: '/shop/checkout' },
+  { value: 'account', label: 'You', icon: UserRound, path: '/shop/account' },
 ];
 
 export default function CustomerShell({ tab }) {
-  const { ensureSession, refreshCart, status, error, units, cart, customer, logout } = useShop();
-  const [receiptsOpen, setReceiptsOpen] = useState(false);
+  const { ensureSession, refreshCart, status, error, units, cart, logout } = useShop();
 
   useEffect(() => {
     ensureSession().catch(() => {});
@@ -34,6 +34,7 @@ export default function CustomerShell({ tab }) {
   }, [tab]);
 
   const go = (value) => navigate(TABS.find((t) => t.value === value).path);
+  const points = cart?.loyalty?.balance ?? 0;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -42,15 +43,13 @@ export default function CustomerShell({ tab }) {
         center={<Segmented value={tab} onChange={go} options={TABS.map((t) => ({ ...t, badge: t.value === 'bag' ? units : 0 }))} />}
         right={
           <>
-            <span
-              className="hidden rounded-lg bg-zinc-100 px-2.5 py-1.5 text-[12px] font-semibold text-zinc-600 ring-1 ring-inset ring-zinc-200/70 sm:inline tabular-nums"
-              title="Signed in with this phone number"
+            <button
+              onClick={() => go('account')}
+              className="hidden items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[12px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200/70 transition hover:bg-amber-100 sm:inline-flex tabular-nums"
+              title="Your FlashCart points"
             >
-              {formatPhone(customer?.phone)}
-            </span>
-            <Button variant="ghost" size="sm" icon={ReceiptText} onClick={() => setReceiptsOpen(true)} aria-label="Your receipts">
-              <span className="hidden sm:inline">Receipts</span>
-            </Button>
+              <Sparkles className="size-3.5 text-amber-500" /> {points} pts
+            </button>
             <Button variant="ghost" size="sm" icon={LogOut} onClick={logout} aria-label="Sign out">
               <span className="hidden lg:inline">Sign out</span>
             </Button>
@@ -80,16 +79,16 @@ export default function CustomerShell({ tab }) {
           <CheckoutView />
         ) : tab === 'scan' ? (
           <ScanView />
+        ) : tab === 'account' ? (
+          <AccountView />
         ) : (
-          <CustomerHome onOpenReceipts={() => setReceiptsOpen(true)} />
+          <CustomerHome />
         )}
       </main>
 
-      <ReceiptsSheet open={receiptsOpen} onClose={() => setReceiptsOpen(false)} />
-
       {/* Mobile tab bar */}
       <nav className="glass fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200/70 pb-[env(safe-area-inset-bottom)] md:hidden print:hidden">
-        <div className="mx-auto grid h-16 max-w-md grid-cols-4">
+        <div className="mx-auto grid h-16 max-w-md grid-cols-5">
           {TABS.map((t) => {
             const active = t.value === tab;
             return (
@@ -107,7 +106,7 @@ export default function CustomerShell({ tab }) {
                     </span>
                   )}
                 </span>
-                {t.value === 'checkout' && cart?.summary.grandTotal ? formatINR(cart.summary.grandTotal, { whole: true }) : t.label}
+                {t.value === 'checkout' && cart?.summary.amountDue ? formatINR(cart.summary.amountDue, { whole: true }) : t.label}
               </button>
             );
           })}

@@ -22,7 +22,7 @@ const publicProduct = ({ id, barcode, sku, name, description, price, mrp, gstRat
   inStock: stock > 0,
 });
 
-export const createApiRouter = ({ config, store, auth, sessions, checkout, cashDesk }) => {
+export const createApiRouter = ({ config, store, auth, sessions, checkout, cashDesk, insights }) => {
   const api = Router();
   const customer = requireRole('customer');
   const cashier = requireRole('cashier');
@@ -38,6 +38,8 @@ export const createApiRouter = ({ config, store, auth, sessions, checkout, cashD
       mall: config.mall,
       currency: 'INR',
       payments: { mode: config.razorpay.mode, keyId: config.razorpay.keyId },
+      loyalty: { ...config.loyalty, pointValue: 1 },
+      returns: { windowDays: config.returnWindowDays, reasons: cashDesk.returnReasons, nonReturnable: ['food'] },
     });
   });
 
@@ -118,6 +120,11 @@ export const createApiRouter = ({ config, store, auth, sessions, checkout, cashD
     res.json(sessions.removeItem(req.params.sessionId, req.params.itemId, own(req)));
   });
 
+  // FlashCart points to put towards this bag (0 clears).
+  api.put('/cart/:sessionId/points', customer, (req, res) => {
+    res.json(sessions.setRedeemPoints(req.params.sessionId, req.body, own(req)));
+  });
+
   // ---------- Payments ----------
   api.post('/razorpay/orders', customer, async (req, res) => {
     res.status(201).json(await checkout.createOrder(req.body, own(req)));
@@ -138,12 +145,27 @@ export const createApiRouter = ({ config, store, auth, sessions, checkout, cashD
   });
 
   // ---------- Receipts ----------
-  api.get('/receipt/:transactionId', requireRole('customer', 'cashier'), (req, res) => {
-    res.json(checkout.getReceiptFor(req.params.transactionId, req.account));
+  // A valid share token (`?s=`) opens the receipt read-only without signing in; otherwise the owner or a cashier.
+  const receiptGuard = requireRole('customer', 'cashier');
+  api.get('/receipt/:transactionId', (req, res, next) => {
+    if (req.query.s) return res.json(checkout.getSharedReceipt(req.params.transactionId, req.query.s));
+    return receiptGuard(req, res, (err) => {
+      if (err) return next(err);
+      return res.json(checkout.getReceiptFor(req.params.transactionId, req.account));
+    });
+  });
+
+  api.get('/credit-notes/:creditNoteId', requireRole('customer', 'cashier'), (req, res) => {
+    res.json(checkout.getCreditNoteFor(req.params.creditNoteId, req.account));
   });
 
   api.get('/me/receipts', customer, (req, res) => {
     res.json({ receipts: checkout.listForCustomer(req.account.id) });
+  });
+
+  // Spend summary, favourite showroom, "order again" and the points account.
+  api.get('/me/summary', customer, (req, res) => {
+    res.json(insights.summaryFor(req.account.id));
   });
 
   // ---------- Cash desk (cashiers only) ----------
@@ -162,8 +184,22 @@ export const createApiRouter = ({ config, store, auth, sessions, checkout, cashD
     res.json(cashDesk.collectCash(req.account, req.params.transactionId, req.body));
   });
 
+  // Returns: quote first (what the refund and credit note will be), then process.
+  desk.post('/bills/:transactionId/returns/quote', (req, res) => {
+    res.json(cashDesk.previewReturn(req.account, req.params.transactionId, req.body));
+  });
+
+  desk.post('/bills/:transactionId/returns', (req, res) => {
+    res.status(201).json(cashDesk.processReturn(req.account, req.params.transactionId, req.body));
+  });
+
   desk.get('/shift', (req, res) => {
     res.json(cashDesk.getShift(req.account));
+  });
+
+  // Every cashier's drawer today, for handover and a floor-wide cash total.
+  desk.get('/drawers', (req, res) => {
+    res.json(cashDesk.drawers(req.account));
   });
 
   desk.post('/shift/open', (req, res) => {

@@ -167,6 +167,17 @@ export function ShopProvider({ children }) {
     [withSession],
   );
 
+  /** Puts FlashCart points towards this bag (0 clears). The server re-prices and returns the cart. */
+  const redeemPoints = useCallback(
+    (points) =>
+      withSession(async (sid) => {
+        const next = await api.setPoints(sid, points);
+        setCart(next);
+        return next;
+      }),
+    [withSession],
+  );
+
   const loadCatalog = useCallback(async ({ force = false } = {}) => {
     if (!force && catalogRef.current && Date.now() - catalogLoadedAt.current < 30_000) return catalogRef.current;
     const data = await api.products();
@@ -204,10 +215,11 @@ export function ShopProvider({ children }) {
       setQuantity,
       removeItem,
       refreshCart,
+      redeemPoints,
       loadCatalog,
       completeCheckout,
     }),
-    [customer, config, sessionId, cart, status, error, catalog, recentScans, login, logout, ensureSession, addByBarcode, setQuantity, removeItem, refreshCart, loadCatalog, completeCheckout],
+    [customer, config, sessionId, cart, status, error, catalog, recentScans, login, logout, ensureSession, addByBarcode, setQuantity, removeItem, refreshCart, redeemPoints, loadCatalog, completeCheckout],
   );
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;

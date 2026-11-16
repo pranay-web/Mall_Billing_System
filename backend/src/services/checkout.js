@@ -1,7 +1,7 @@
+import crypto from 'node:crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { newTransactionId } from '../lib/ids.js';
-import { buildBill } from './pricing.js';
 
 const ORDER_REUSE_WINDOW_MS = 15 * 60_000;
 
@@ -9,9 +9,21 @@ const ORDER_REUSE_WINDOW_MS = 15 * 60_000;
 export const LEGACY_BILL_PREFIX = 'FLASHCART:BILL:';
 
 /** Turns a cart into a settled transaction — online via Razorpay, or as a cash bill paid at the desk. */
-export const createCheckoutService = ({ store, config, sessions, gateway }) => {
+export const createCheckoutService = ({ store, config, sessions, gateway, loyalty }) => {
   // ---------- Views ----------
   const statusOf = (txn) => (txn.payment.status === 'paid' ? 'paid' : 'awaiting_payment');
+
+  /** Unguessable token that lets a receipt link be opened without signing in (WhatsApp / email sharing). */
+  const shareToken = (transactionId) =>
+    crypto.createHmac('sha256', config.authSecret).update(`share:${transactionId}`).digest('base64url').slice(0, 22);
+
+  const validShareToken = (transactionId, token) => {
+    const expected = Buffer.from(shareToken(transactionId));
+    const given = Buffer.from(String(token ?? ''));
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  };
+
+  const returnedQty = (txn, itemId) => txn.returnedQuantities?.[itemId] ?? 0;
 
   const receipt = (txn) => ({
     transactionId: txn.id,
@@ -23,13 +35,18 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
     status: statusOf(txn),
     currency: 'INR',
     mall: config.mall,
-    items: txn.bill.items,
-    groups: txn.bill.groups,
+    items: txn.bill.items.map((i) => ({ ...i, returnedQuantity: returnedQty(txn, i.itemId) })),
+    groups: txn.bill.groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, returnedQuantity: returnedQty(txn, i.itemId) })) })),
     taxBreakdown: txn.bill.taxBreakdown,
     summary: txn.bill.summary,
     payment: txn.payment,
+    loyalty: txn.loyalty ?? null,
+    refunds: txn.refunds ?? [],
+    refundStatus: txn.refundStatus ?? 'none',
     // Printed as a Code 128 barcode on cash bills; the desk scanner reads it straight into lookup.
     billCode: txn.id,
+    // Anyone with this link can view (not edit) the receipt — used by the Share button.
+    sharePath: `/receipt/${txn.id}?s=${shareToken(txn.id)}`,
   });
 
   const summaryRow = (txn) => ({
@@ -40,15 +57,18 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
     units: txn.bill.summary.units,
     stores: txn.bill.groups.length,
     grandTotal: txn.bill.summary.grandTotal,
+    amountDue: txn.bill.summary.amountDue ?? txn.bill.summary.grandTotal,
+    pointsEarned: txn.loyalty?.pointsEarned ?? 0,
+    refundStatus: txn.refundStatus ?? 'none',
     paymentMethod: txn.payment.method,
   });
 
   // ---------- Settlement ----------
-  const fingerprint = (session) =>
-    session.lines
+  const fingerprint = (session, points) =>
+    `${session.lines
       .map((l) => `${l.productId}x${l.quantity}`)
       .sort()
-      .join(',');
+      .join(',')}|pts${points}`;
 
   /** Validates a cart is payable right now and freezes it into a bill. */
   const prepareBill = (session) => {
@@ -68,10 +88,19 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
         );
       }
     }
-    return buildBill(sessions.resolveLines(session));
+    return sessions.priceSession(session);
   };
 
-  const settle = ({ session, customerId, bill, payment }) => {
+  /** Points earned on a paid bill, written once the money is actually in. */
+  const earnOn = (txn) => {
+    if (!txn.customerId || txn.loyalty?.earnedAt) return txn;
+    const pointsEarned = loyalty.pointsFor(txn.bill.summary.amountDue ?? txn.bill.summary.grandTotal);
+    const balanceAfter = loyalty.earn(txn.customerId, pointsEarned, txn.id);
+    txn.loyalty = { ...(txn.loyalty ?? { pointsRedeemed: 0, pointsValue: 0 }), pointsEarned, balanceAfter, earnedAt: new Date().toISOString() };
+    return txn;
+  };
+
+  const settle = ({ session, customerId, bill, points = 0, payment }) => {
     const customer = store.getCustomer(customerId);
     let id = newTransactionId();
     while (store.hasTransaction(id)) id = newTransactionId();
@@ -86,7 +115,9 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
         }
         store.adjustStock(item.productId, -item.quantity);
       }
-      return store.saveTransaction({
+      // Points are spent the moment the bill is issued; earning waits until it is paid.
+      const balanceAfter = loyalty.redeem(customerId, points, id);
+      const record = {
         id,
         uuid: uuidv4(),
         invoiceNumber: store.nextInvoiceNumber(now),
@@ -96,7 +127,13 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
         createdAt: now.toISOString(),
         bill,
         payment,
-      });
+        loyalty: { pointsRedeemed: points, pointsValue: bill.summary.pointsValue, pointsEarned: 0, balanceAfter },
+        returnedQuantities: {},
+        refunds: [],
+        refundStatus: 'none',
+      };
+      if (payment.status === 'paid') earnOn(record);
+      return store.saveTransaction(record);
     });
 
     if (session) {
@@ -122,8 +159,11 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
   const createOrder = async ({ sessionId } = {}, ctx) => {
     if (!sessionId) throw badRequest('SESSION_REQUIRED', 'A sessionId is required.');
     const session = sessions.getActive(sessionId, ctx);
-    const bill = prepareBill(session);
-    const fp = fingerprint(session);
+    const { bill, points } = prepareBill(session);
+    if (bill.amountPaise <= 0) {
+      throw badRequest('NOTHING_TO_PAY', 'Points cover this bill — choose “Cash at the cash desk” to issue it, or use fewer points.');
+    }
+    const fp = fingerprint(session, points);
 
     // Re-use the open order if the bag is unchanged (retries after a failed attempt, double taps).
     const open = session.pendingOrderId && store.orders.get(session.pendingOrderId);
@@ -150,6 +190,7 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
       amountPaise: bill.amountPaise,
       fingerprint: fp,
       bill,
+      points,
       status: 'created',
       createdAt: new Date().toISOString(),
       transactionId: null,
@@ -210,11 +251,12 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
         session,
         customerId: order.customerId,
         bill: order.bill,
+        points: order.points ?? 0,
         payment: {
           channel: 'razorpay',
           method: details?.method ?? 'online',
           status: 'paid',
-          amount: order.bill.summary.grandTotal,
+          amount: order.bill.summary.amountDue,
           paidAt: new Date().toISOString(),
           razorpayOrderId: orderId,
           razorpayPaymentId: paymentId,
@@ -244,16 +286,17 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
     if (method !== 'cash') throw badRequest('INVALID_METHOD', 'Only cash can be paid at the desk.');
     if (!sessionId) throw badRequest('SESSION_REQUIRED', 'A sessionId is required.');
     const session = sessions.getActive(sessionId, ctx);
-    const bill = prepareBill(session);
+    const { bill, points } = prepareBill(session);
     const txn = settle({
       session,
       customerId: session.customerId,
       bill,
+      points,
       payment: {
         channel: 'desk',
         method: 'cash',
         status: 'pending',
-        amount: bill.summary.grandTotal,
+        amount: bill.summary.amountDue,
         paidAt: null,
         collection: null,
       },
@@ -277,6 +320,21 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
     return receipt(txn);
   };
 
+  /** Read-only receipt for anyone holding a valid share link. */
+  const getSharedReceipt = (transactionId, token) => {
+    const txn = getTransaction(transactionId);
+    if (!validShareToken(txn.id, token)) throw notFound('RECEIPT_NOT_FOUND', 'This share link is not valid.');
+    return receipt(txn);
+  };
+
+  const getCreditNoteFor = (creditNoteId, account) => {
+    const note = store.getRefund(String(creditNoteId).trim().toUpperCase());
+    if (!note || (account.role === 'customer' && note.customerId !== account.id)) {
+      throw notFound('CREDIT_NOTE_NOT_FOUND', 'No credit note exists for this ID.');
+    }
+    return { ...note, mall: config.mall };
+  };
+
   const listForCustomer = (customerId) => store.listCustomerTransactions(customerId, 20).map(summaryRow);
 
   return {
@@ -286,7 +344,10 @@ export const createCheckoutService = ({ store, config, sessions, gateway }) => {
     createCashBill,
     getTransaction,
     getReceiptFor,
+    getSharedReceipt,
+    getCreditNoteFor,
     listForCustomer,
+    earnOn,
     receipt,
     summaryRow,
   };

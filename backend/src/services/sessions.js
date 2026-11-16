@@ -4,7 +4,7 @@ import { newSessionId } from '../lib/ids.js';
 import { buildBill } from './pricing.js';
 
 /** Customer sessions and the cart that lives inside each one. */
-export const createSessionService = ({ store, config }) => {
+export const createSessionService = ({ store, config, loyalty }) => {
   const ttlMs = config.sessionTtlMinutes * 60_000;
   const maxQty = config.maxLineQuantity;
 
@@ -32,6 +32,7 @@ export const createSessionService = ({ store, config }) => {
       updatedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
       lines: [],
+      redeemPoints: 0,
       transactionId: null,
     };
     store.sessions.set(id, session);
@@ -75,8 +76,21 @@ export const createSessionService = ({ store, config }) => {
   const resolveLines = (session) =>
     session.lines.map((line) => ({ ...line, product: store.getProduct(line.productId) }));
 
+  /**
+   * Prices the bag with the points the customer chose to redeem, clamped to what the
+   * rules allow right now (the bag may have shrunk, or points may have been spent elsewhere).
+   */
+  const priceSession = (session) => {
+    const lines = resolveLines(session);
+    const base = buildBill(lines);
+    const max = loyalty.maxRedeemable(session.customerId, base.summary.grandTotal);
+    const points = Math.min(session.redeemPoints ?? 0, max);
+    const bill = points > 0 ? buildBill(lines, { pointsRedeemed: points }) : base;
+    return { bill, points };
+  };
+
   const cartView = (session) => {
-    const bill = buildBill(resolveLines(session));
+    const { bill, points } = priceSession(session);
     const withLimits = (item) => {
       const product = store.getProduct(item.productId);
       return { ...item, available: product.stock, maxQuantity: Math.min(product.stock, maxQty) };
@@ -92,7 +106,21 @@ export const createSessionService = ({ store, config }) => {
       groups: bill.groups.map((g) => ({ ...g, items: g.items.map(withLimits) })),
       taxBreakdown: bill.taxBreakdown,
       summary: bill.summary,
+      loyalty: loyalty.describe(session.customerId, bill.summary.grandTotal, points, bill.summary.amountDue),
     };
+  };
+
+  /** Chooses how many FlashCart points to put towards this bag. */
+  const setRedeemPoints = (sessionId, { points } = {}, ctx) => {
+    const session = getActive(sessionId, ctx);
+    const requested = loyalty.parsePoints(points);
+    const max = loyalty.maxRedeemable(session.customerId, buildBill(resolveLines(session)).summary.grandTotal);
+    if (requested > max) {
+      throw badRequest('POINTS_LIMIT', max === 0 ? 'No points can be used on this bag yet.' : `You can use up to ${max} points on this bag.`, { max });
+    }
+    session.redeemPoints = requested;
+    touch(session);
+    return cartView(session);
   };
 
   const parseQuantity = (value, { min }) => {
@@ -183,5 +211,5 @@ export const createSessionService = ({ store, config }) => {
     return cartView(session);
   };
 
-  return { openForCustomer, get, getActive, describe, resolveLines, cartView, addItem, updateQuantity, removeItem, touch };
+  return { openForCustomer, get, getActive, describe, resolveLines, priceSession, cartView, setRedeemPoints, addItem, updateQuantity, removeItem, touch };
 };

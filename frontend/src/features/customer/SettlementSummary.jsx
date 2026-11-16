@@ -1,10 +1,12 @@
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Sparkles } from 'lucide-react';
 import { Card, Eyebrow } from '../../components/ui/misc.jsx';
 import { formatINR, formatSignedINR, pluralize } from '../../lib/format.js';
 
-/** Sticky financial summary: subtotal, per-slab GST, round-off and payable total. */
+/** Sticky financial summary: subtotal, per-slab GST, round-off, points used and the amount still to pay. */
 export function SettlementSummary({ cart, title = 'Settlement summary', children, footnote = true }) {
-  const { summary, taxBreakdown } = cart;
+  const { summary, taxBreakdown, loyalty } = cart;
+  const pointsUsed = summary.pointsValue ?? 0;
+  const due = summary.amountDue ?? summary.grandTotal;
   return (
     <Card className="overflow-hidden">
       <div className="p-5">
@@ -24,6 +26,19 @@ export function SettlementSummary({ cart, title = 'Settlement summary', children
             />
           ))}
           {summary.roundOff !== 0 && <Row label="Round off" value={formatSignedINR(summary.roundOff)} muted />}
+          {pointsUsed > 0 && (
+            <>
+              <Row label="Invoice total" value={formatINR(summary.grandTotal)} />
+              <Row
+                label={
+                  <span className="inline-flex items-center gap-1.5 text-amber-700">
+                    <Sparkles className="size-3.5" /> {summary.pointsRedeemed} points used
+                  </span>
+                }
+                value={<span className="text-amber-700">−{formatINR(pointsUsed)}</span>}
+              />
+            </>
+          )}
         </dl>
         <div className="mt-4 flex items-end justify-between border-t border-dashed border-zinc-200 pt-4">
           <div>
@@ -32,10 +47,15 @@ export function SettlementSummary({ cart, title = 'Settlement summary', children
               CGST {formatINR(summary.cgst)} + SGST {formatINR(summary.sgst)}
             </p>
           </div>
-          <p key={summary.grandTotal} className="text-[28px] font-semibold leading-none tracking-tight text-zinc-900 tabular-nums animate-fade-in">
-            {formatINR(summary.grandTotal)}
+          <p key={due} className="text-[28px] font-semibold leading-none tracking-tight text-zinc-900 tabular-nums animate-fade-in">
+            {formatINR(due)}
           </p>
         </div>
+        {loyalty?.willEarn > 0 && (
+          <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[12px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200/70">
+            <Sparkles className="size-3.5 text-amber-500" /> You’ll earn {loyalty.willEarn} FlashCart points on this bill
+          </p>
+        )}
       </div>
       {children && <div className="border-t border-zinc-100 bg-zinc-50/60 p-4">{children}</div>}
       {footnote && (

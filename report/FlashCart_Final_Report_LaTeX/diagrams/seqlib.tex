@@ -1,0 +1,17 @@
+% Sequence-diagram helpers: lifelines at fixed x, messages at a y row.
+\newcommand{\lifeline}[4]{% name, x, label, bottom-y
+  \node[draw,rounded corners=3pt,align=center,font=\small\bfseries,minimum width=2.9cm,minimum height=1.1cm,line width=0.7pt] (#1) at (#2,0) {#3};
+  \draw[dashed,line width=0.5pt] (#2,-0.55) -- (#2,#4);}
+\newcommand{\msg}[4]{% y, fromx, tox, text  (solid call)
+  \draw[arr] (#2,#1) -- node[font=\footnotesize\bfseries,above,midway,align=center,fill=white,inner sep=1pt]{#4} (#3,#1);}
+\newcommand{\ret}[4]{% y, fromx, tox, text  (dashed return)
+  \draw[retarr] (#2,#1) -- node[font=\footnotesize,above,midway,align=center,fill=white,inner sep=1pt]{#4} (#3,#1);}
+\newcommand{\selfmsg}[3]{% y, x, text
+  \draw[arr] (#2,#1) -- ++(0.6,0) -- ++(0,-0.45) -- ++(-0.6,0);
+  \node[font=\footnotesize\itshape,anchor=west,align=left,fill=white,inner sep=1.5pt] at (#2+0.75,#1-0.22) {#3};}
+\newcommand{\altframe}[6]{% x0, y-top, x1, y-bottom, y-divider, guards {a}{b}
+  \draw[line width=0.6pt] (#1,#2) rectangle (#3,#4);
+  \draw[line width=0.6pt] (#1,#2) -- ++(1.0,0) -- ++(0,-0.42) -- ++(-0.25,-0.22) -- ++(-0.75,0);
+  \node[font=\small\bfseries,anchor=north west] at (#1+0.12,#2-0.04) {alt};
+  \draw[dashed,line width=0.5pt] (#1,#5) -- (#3,#5);
+  \node[font=\footnotesize\itshape,anchor=west] at (#1+1.2,#2-0.3) {#6};}

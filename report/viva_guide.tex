@@ -1,0 +1,53 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[a4paper,margin=1.5cm,top=1.3cm,bottom=1.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlist{itemsep=1pt,topsep=2pt,leftmargin=*}
+\titleformat{\section}{\large\bfseries\color{blue!60!black}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{6pt}{3pt}
+\newcommand{\key}[1]{\textbf{#1}}
+
+\begin{document}
+{\LARGE\bfseries FlashCart: Viva Guide for the New Features and Diagrams}\par
+\vspace{2pt}
+{\small UCS503 Software Engineering \quad $\cdot$ \quad Final evaluation \quad $\cdot$ \quad Group 3C82}\par
+
+\section{What is new since the mid-term}
+\begin{itemize}
+  \item \key{FlashCart points (loyalty).} Customers earn 1 point per Rs.~50 actually paid, and 1 point is worth Rs.~1. At checkout they can use points for up to 50\% of a bill. Points are a \emph{voucher}: the invoice total and GST stay the same, and only the \emph{amount due} is reduced. Points are earned only after payment, so a pending cash bill earns nothing yet. Every change is written to a ledger with a running balance.
+  \item \key{Returns and GST credit notes.} A paid bill scanned at the cash desk opens the returns panel. Food is not returnable, the window is 30 days, and the cashier can return only the quantity not yet returned. The server quotes the refund first, then processes it. Each unit gets its exact pro-rata share of taxable value and GST, so a full return reverses the invoice to the paisa. Credit notes are numbered \texttt{FC/CN/2627/000001}. Stock is restocked, redeemed points are credited back, and earned points are reversed.
+  \item \key{Refund method and drawer safety.} Refunds go in cash from the drawer or back to the card or UPI used for the bill. A cash refund cannot exceed the cash in that drawer.
+  \item \key{Receipt sharing.} Share, WhatsApp and Copy-link buttons create a link signed with HMAC-SHA256. Anyone with the link sees the bill read-only, and a forged token is refused.
+  \item \key{Spend summary and order again.} The ``You'' tab shows six months of spend, the favourite showroom, most-bought items, refunds, points history, and one-tap re-order of Food Court items.
+  \item \key{Multi-cashier drawers and handover.} Each cashier has their own drawer. ``All desks today'' shows every drawer and the total cash on the floor. A new cashier can take over the counted float of the colleague who closed last.
+  \item \key{Dark mode and installable app.} A System/Light/Dark setting remaps the palette. A web app manifest and a service worker let the app install on the phone and open offline, with the API never cached.
+\end{itemize}
+
+\section{Likely viva questions on the features}
+\begin{itemize}
+  \item \key{Why are points not a discount?} A discount would reduce the taxable value and change the GST. A voucher reduces only the amount due, so the tax invoice stays correct.
+  \item \key{Why are points earned only after payment?} Earning before money arrives would reward bills that are never paid, such as an unpaid cash bill.
+  \item \key{How is a partial return priced exactly?} Each returned unit takes \texttt{item.tax $\times$ qty / original qty} in integer paise, so the sum of all returns equals the original invoice.
+  \item \key{How is the drawer protected?} The server checks the refund against cash in the drawer before anything changes, and the desk shows a warning in the panel.
+  \item \key{Why is a share link safe without sign-in?} It carries an HMAC token made with the server secret. The server compares it in constant time, and the link gives read-only access.
+  \item \key{What happens if the signature is wrong?} No invoice is written, and no points are redeemed or earned.
+\end{itemize}
+
+\section{Diagrams explained}
+\begin{description}[leftmargin=*,style=nextline,itemsep=2pt]
+  \item[Figure 2.1: Architecture] Three tiers. The browser holds the customer PWA, barcode engine, service worker and cash desk. The Node server holds the Express 5 API, the services (auth, sessions, pricing, checkout, cash desk, loyalty, returns, insights) and security. The data tier holds SQLite, the Razorpay gateway and the share targets. Clients send intents over HTTPS with a bearer token, and the server computes every amount.
+  \item[Figure 2.3: Use case] Left actor: the customer (sign in, scan, browse, order again, pay, redeem points, share, view summary, install). Right actor: the cashier (sign in, start day, take over a drawer, find bill, collect cash, process return, view desks, close day). \emph{Include} means a step always happens (scan includes add to bag). \emph{Extend} means an optional step (redeem points extends checkout). Razorpay is an external system.
+  \item[Figure 2.4: Sequence, checkout with points] Lifelines are customer, frontend, backend, SQLite and Razorpay. Steps 1--5 apply points on the server. Steps 7--13 create the Razorpay order for the amount due and receive the payment ID and signature. Step 14 is verification, and the \texttt{alt} frame separates a valid signature (save bill, redeem and earn points) from an invalid one (400, nothing written).
+  \item[Figure 2.5: Sequence, return] The cashier looks up the bill and picks items. The server quotes the credit note (steps 6--9) before the cashier accepts. Processing re-validates, restocks, updates the ledger and saves the credit note in one transaction. The \texttt{alt} frame shows a card/UPI refund through the gateway, or a cash refund from the drawer.
+  \item[Figure 2.6: Activity, checkout] The flow starts at sign-in and loops on scanning until the bag is complete. A decision offers points, then splits into cash (cashier collects) or online (retry until the signature verifies). Both paths merge at the saved, paid receipt, which can then be shared.
+  \item[Figure 2.7: Activity, return] Unpaid or expired bills are turned away. The cashier selects and quotes, and a decision stops a cash refund above the drawer. Accepting the return forks into restock and ledger update in parallel, then joins to issue the credit note. A final decision chooses the cash hand-back or the refund to source.
+  \item[Figure 2.8: Class diagram] \emph{Customer} owns \emph{ShoppingSession}s, which contain \emph{CartLine}s (composition, the diamond) that refer to \emph{Product}. A session checks out as at most one \emph{Transaction}. Transactions are collected in a \emph{CashShift} opened by a \emph{Cashier}, and are refunded by \emph{CreditNote}s. Each points movement is a \emph{LoyaltyLedgerEntry}. The stereotyped services (PricingEngine, PaymentGateway, LoyaltyService, InsightsService) hold logic and are used, not owned, by the entities.
+  \item[Figure 2.2: SDLC] Iterative and incremental agile. The loop is requirement analysis, design, implementation, testing, deployment and demo, and review. Four increments were delivered: MVP, accounts and data, real retail, and the final loyalty, returns and experience increment.
+\end{description}
+\end{document}

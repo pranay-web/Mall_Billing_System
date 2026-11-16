@@ -124,20 +124,28 @@ export const api = {
   updateItem: (sessionId, itemId, quantity) =>
     request('put', `/cart/${enc(sessionId)}/items/${enc(itemId)}`, { ...asCustomer, data: { quantity } }),
   removeItem: (sessionId, itemId) => request('delete', `/cart/${enc(sessionId)}/items/${enc(itemId)}`, asCustomer),
+  setPoints: (sessionId, points) => request('put', `/cart/${enc(sessionId)}/points`, { ...asCustomer, data: { points } }),
 
   createOrder: (sessionId) => request('post', '/razorpay/orders', { ...asCustomer, data: { sessionId } }),
   verifyPayment: (payload) => request('post', '/razorpay/verify', { ...asCustomer, data: payload }),
   mockPay: (payload) => request('post', '/razorpay/mock/pay', { ...asCustomer, data: payload }),
   payAtDesk: (sessionId) => request('post', '/checkout/payment', { ...asCustomer, data: { sessionId, method: 'cash' } }),
 
-  receipt: (transactionId) => request('get', `/receipt/${enc(transactionId)}`, asCustomer),
+  // A share token opens the receipt read-only without a sign-in; otherwise the owner's token is used.
+  receipt: (transactionId, { share } = {}) =>
+    share ? request('get', `/receipt/${enc(transactionId)}`, { params: { s: share } }) : request('get', `/receipt/${enc(transactionId)}`, asCustomer),
+  creditNote: (creditNoteId) => request('get', `/credit-notes/${enc(creditNoteId)}`, asCustomer),
   myReceipts: () => request('get', '/me/receipts', asCustomer),
+  mySummary: () => request('get', '/me/summary', asCustomer),
 
   pos: {
     pending: () => request('get', '/pos/pending', asCashier),
     lookup: (code) => request('post', '/pos/lookup', { ...asCashier, data: { code } }),
     collect: (transactionId, cashReceived) =>
       request('post', `/pos/bills/${enc(transactionId)}/collect`, { ...asCashier, data: { cashReceived } }),
+    quoteReturn: (transactionId, body) => request('post', `/pos/bills/${enc(transactionId)}/returns/quote`, { ...asCashier, data: body }),
+    processReturn: (transactionId, body) => request('post', `/pos/bills/${enc(transactionId)}/returns`, { ...asCashier, data: body }),
+    drawers: () => request('get', '/pos/drawers', asCashier),
     shift: () => request('get', '/pos/shift', asCashier),
     openShift: (openingCash) => request('post', '/pos/shift/open', { ...asCashier, data: { openingCash } }),
     closeShift: (countedCash) => request('post', '/pos/shift/close', { ...asCashier, data: { countedCash } }),

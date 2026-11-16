@@ -1,5 +1,6 @@
 import { navigate } from '../lib/router.js';
 import { Logo } from './Logo.jsx';
+import { ThemeToggle } from './ThemeToggle.jsx';
 
 /** Sticky glass header shared by every surface. */
 export function AppHeader({ suffix, center, right, maxWidth = 'max-w-6xl' }) {
@@ -8,7 +9,10 @@ export function AppHeader({ suffix, center, right, maxWidth = 'max-w-6xl' }) {
       <div className={`mx-auto flex h-16 w-full items-center justify-between gap-4 px-4 sm:px-6 ${maxWidth}`}>
         <Logo suffix={suffix} onClick={() => navigate('/')} />
         {center && <div className="hidden flex-1 justify-center md:flex">{center}</div>}
-        <div className="flex items-center gap-2">{right}</div>
+        <div className="flex items-center gap-2">
+          {right}
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

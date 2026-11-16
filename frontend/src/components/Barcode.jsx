@@ -22,8 +22,9 @@ export function Barcode({ value, format = /^\d{13}$/.test(value) ? 'EAN13' : 'CO
         fontSize: 15,
         textMargin: 3,
         font: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        background: 'transparent',
-        lineColor: '#18181b',
+        // Always black bars on white so scanners (and dark mode) read it reliably.
+        background: '#ffffff',
+        lineColor: '#111111',
       });
       // Make the SVG scale with its container instead of using fixed pixel sizes.
       const w = svg.getAttribute('width');
@@ -38,5 +39,5 @@ export function Barcode({ value, format = /^\d{13}$/.test(value) ? 'EAN13' : 'CO
     }
   }, [value, format, height, barWidth, showText]);
 
-  return <svg ref={ref} role="img" aria-label={`Barcode ${value}`} className={`block h-auto w-full ${className}`} />;
+  return <svg ref={ref} role="img" aria-label={`Barcode ${value}`} className={`block h-auto w-full rounded-md [background:#fff] ${className}`} />;
 }

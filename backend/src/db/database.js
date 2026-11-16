@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS customers (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   phone         TEXT    NOT NULL UNIQUE,              -- E.164, e.g. +919876543210
   created_at    TEXT    NOT NULL,
-  last_login_at TEXT    NOT NULL
+  last_login_at TEXT    NOT NULL,
+  points        INTEGER NOT NULL DEFAULT 0            -- FlashCart points balance
 );
 
 CREATE TABLE IF NOT EXISTS cashiers (
@@ -75,6 +76,36 @@ CREATE TABLE IF NOT EXISTS counters (
   name  TEXT    PRIMARY KEY,
   value INTEGER NOT NULL
 );
+
+-- Credit notes: items returned at the cash desk and the money handed back.
+CREATE TABLE IF NOT EXISTS refunds (
+  id                 TEXT    PRIMARY KEY,                -- CN-XXXXXXXX
+  credit_note_number TEXT    NOT NULL UNIQUE,            -- FC/CN/2627/000001
+  transaction_id     TEXT    NOT NULL REFERENCES transactions(id),
+  customer_id        INTEGER REFERENCES customers(id),
+  cashier_id         INTEGER REFERENCES cashiers(id),
+  shift_id           INTEGER REFERENCES cash_shifts(id),
+  created_at         TEXT    NOT NULL,
+  amount             REAL    NOT NULL,                   -- cash / gateway refund in ₹ (after points credited back)
+  method             TEXT    NOT NULL,                   -- cash | original
+  data               TEXT    NOT NULL                    -- full credit note snapshot (JSON)
+);
+CREATE INDEX IF NOT EXISTS idx_refund_txn      ON refunds(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_refund_shift    ON refunds(shift_id);
+CREATE INDEX IF NOT EXISTS idx_refund_customer ON refunds(customer_id, created_at);
+
+-- FlashCart points: every earn / redeem / reversal, with the running balance.
+CREATE TABLE IF NOT EXISTS loyalty_ledger (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id   INTEGER NOT NULL REFERENCES customers(id),
+  delta         INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  kind          TEXT    NOT NULL,                        -- earn | redeem | reverse | credit
+  reference     TEXT,                                    -- bill or credit note ID
+  note          TEXT,
+  created_at    TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_customer ON loyalty_ledger(customer_id, id);
 `;
 
 export const openDatabase = (filePath) => {
@@ -91,6 +122,8 @@ export const openDatabase = (filePath) => {
 const migrate = (db) => {
   const productColumns = db.prepare('PRAGMA table_info(products)').all().map((c) => c.name);
   if (!productColumns.includes('mrp')) db.exec('ALTER TABLE products ADD COLUMN mrp REAL');
+  const customerColumns = db.prepare('PRAGMA table_info(customers)').all().map((c) => c.name);
+  if (!customerColumns.includes('points')) db.exec('ALTER TABLE customers ADD COLUMN points INTEGER NOT NULL DEFAULT 0');
 };
 
 /** Seeds the product catalog and the first cashier account on an empty database. */

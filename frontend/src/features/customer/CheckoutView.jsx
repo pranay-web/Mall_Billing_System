@@ -1,5 +1,5 @@
-import { ArrowLeft, Banknote, Check, CreditCard, FlaskConical, LockKeyhole, ShoppingBag, Smartphone } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { ArrowLeft, Banknote, Check, CreditCard, FlaskConical, LockKeyhole, ShoppingBag, Smartphone, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShowroomIcon } from '../../components/ProductTile.jsx';
 import { Alert } from '../../components/ui/Alert.jsx';
@@ -9,6 +9,7 @@ import { Card, EmptyState, Eyebrow, Spinner } from '../../components/ui/misc.jsx
 import { useShop } from '../../context/ShopContext.jsx';
 import { api } from '../../lib/api.js';
 import { formatINR, pluralize } from '../../lib/format.js';
+import { useToast } from '../../components/ui/Toast.jsx';
 import { loadRazorpay } from '../../lib/razorpay.js';
 import { navigate } from '../../lib/router.js';
 import MockGatewaySheet from './MockGatewaySheet.jsx';
@@ -22,7 +23,7 @@ const METHODS = [
 ];
 
 export default function CheckoutView() {
-  const { customer, cart, sessionId, config, completeCheckout, refreshCart } = useShop();
+  const { customer, cart, sessionId, config, completeCheckout, refreshCart, redeemPoints } = useShop();
   const [method, setMethod] = useState('upi');
   const [phase, setPhase] = useState('idle'); // idle | creating | gateway | verifying | mock
   const [notice, setNotice] = useState(null); // { tone, title, message }
@@ -43,7 +44,7 @@ export default function CheckoutView() {
 
   const busy = phase !== 'idle';
   const mode = config?.payments.mode;
-  const total = cart.summary.grandTotal;
+  const total = cart.summary.amountDue ?? cart.summary.grandTotal;
 
   const finish = async (receipt) => {
     completeCheckout();
@@ -172,6 +173,8 @@ export default function CheckoutView() {
           })}
         </fieldset>
 
+        <PointsCard cart={cart} onChange={redeemPoints} disabled={busy} />
+
         {method !== 'cash' && mode && mode !== 'live' && (
           <div className="flex gap-3 rounded-2xl border border-dashed border-zinc-300 bg-white/60 p-4 text-[13px] text-zinc-600">
             <FlaskConical className="mt-0.5 size-4 shrink-0 text-zinc-400" />
@@ -248,5 +251,109 @@ export default function CheckoutView() {
           document.body,
         )}
     </div>
+  );
+}
+
+/** Slide to put FlashCart points towards this bill (the server caps it at half the bill and the balance). */
+function PointsCard({ cart, onChange, disabled }) {
+  const { loyalty, summary } = cart;
+  const toast = useToast();
+  const [value, setValue] = useState(loyalty.redeeming);
+  const [saving, setSaving] = useState(false);
+  const timer = useRef(null);
+
+  // Keep the slider in step with the server (e.g. the bag shrank and the cap moved).
+  useEffect(() => setValue(loyalty.redeeming), [loyalty.redeeming]);
+
+  const commit = (points) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(async () => {
+      if (points === loyalty.redeeming) return;
+      setSaving(true);
+      try {
+        await onChange(points);
+      } catch (err) {
+        toast({ tone: 'error', title: "Couldn't apply points", description: err.message });
+        setValue(loyalty.redeeming);
+      } finally {
+        setSaving(false);
+      }
+    }, 300);
+  };
+
+  const pick = (points) => {
+    setValue(points);
+    commit(points);
+  };
+
+  if (loyalty.balance === 0) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-4 py-3 text-[13px] text-amber-900">
+        <Sparkles className="size-5 shrink-0 text-amber-500" />
+        <p>
+          <span className="font-semibold">You’ll earn {loyalty.willEarn} FlashCart points</span> on this bill — 1 point per {formatINR(loyalty.earnPerRupees, { whole: true })} paid, worth ₹1 each next time.
+        </p>
+      </div>
+    );
+  }
+
+  const max = loyalty.maxRedeemable;
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-start justify-between gap-4 p-5 pb-4">
+        <div>
+          <Eyebrow>FlashCart points</Eyebrow>
+          <p className="mt-1 text-[15px] font-semibold text-zinc-900">
+            You have {loyalty.balance} points <span className="font-normal text-zinc-500">· worth {formatINR(loyalty.balance, { whole: true })}</span>
+          </p>
+          <p className="mt-0.5 text-[13px] text-zinc-500">
+            {max > 0 ? `Use up to ${max} points (${loyalty.maxRedeemPercent}% of this bill).` : 'Points can cover part of a bill once it’s a little larger.'}
+          </p>
+        </div>
+        <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-200/70">
+          <Sparkles className="size-5" />
+        </div>
+      </div>
+      {max > 0 && (
+        <div className="px-5 pb-5">
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={max}
+              step={1}
+              value={value}
+              disabled={disabled}
+              onChange={(e) => pick(Number(e.target.value))}
+              className="h-2 flex-1 cursor-pointer accent-amber-500"
+              aria-label="Points to use"
+            />
+            <span className="w-24 text-right text-sm font-semibold text-zinc-900 tabular-nums">
+              {value} pts
+              {saving && <span className="ml-1 inline-block size-1.5 animate-pulse rounded-full bg-amber-500 align-middle" />}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-1.5">
+              <button type="button" onClick={() => pick(0)} disabled={disabled} className="rounded-lg bg-zinc-100 px-2.5 py-1 text-[12px] font-semibold text-zinc-600 transition hover:bg-zinc-200">
+                None
+              </button>
+              <button type="button" onClick={() => pick(max)} disabled={disabled} className="rounded-lg bg-amber-100 px-2.5 py-1 text-[12px] font-semibold text-amber-800 transition hover:bg-amber-200">
+                Use max ({max})
+              </button>
+            </div>
+            <p className="text-[13px] text-zinc-500">
+              {summary.pointsValue > 0 ? (
+                <>
+                  <span className="font-semibold text-emerald-700">−{formatINR(summary.pointsValue)}</span> off · pay {formatINR(summary.amountDue)}
+                </>
+              ) : (
+                `Earn ${loyalty.willEarn} points on this bill`
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

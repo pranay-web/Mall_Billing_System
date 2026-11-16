@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { createApp } from '../src/app.js';
 import { createGateway } from '../src/services/gateway.js';
-import { buildBill } from '../src/services/pricing.js';
+import { buildBill, buildCreditNote } from '../src/services/pricing.js';
 
 const SECRET = 'test_secret_for_hmac';
 const CASHIER = { email: 'desk@test.in', password: 'correct-horse-battery', name: 'Test Cashier' };
@@ -20,6 +20,8 @@ const baseConfig = {
   seedCashier: CASHIER,
   sessionTtlMinutes: 60,
   maxLineQuantity: 25,
+  loyalty: { earnPerRupees: 50, maxRedeemPercent: 50 },
+  returnWindowDays: 30,
   razorpay: { mode: 'test', keyId: 'rzp_test_dummy', keySecret: SECRET },
 };
 
@@ -59,7 +61,12 @@ const boot = async (overrides = {}) => {
     return { token: body.token, sid: session.body.sessionId };
   };
 
-  const cashier = async () => (await call('POST', '/api/auth/cashier/login', { email: CASHIER.email, password: CASHIER.password })).body.token;
+  // Cashier sign-in is rate-limited (8 per 10 min), so the suite signs in once and reuses the token.
+  let cashierToken = null;
+  const cashier = async () => {
+    cashierToken ??= (await call('POST', '/api/auth/cashier/login', { email: CASHIER.email, password: CASHIER.password })).body.token;
+    return cashierToken;
+  };
 
   return { call, customer, cashier, store, close: () => server.close() };
 };
@@ -347,5 +354,249 @@ describe('simulated gateway (no Razorpay keys)', () => {
     const { token } = await t.customer('9000000041');
     const res = await t.call('POST', '/api/razorpay/mock/pay', { orderId: 'order_x' }, token);
     assert.equal(res.body.error.code, 'MOCK_DISABLED');
+  });
+});
+
+describe('credit notes (pricing)', () => {
+  it('refunds each returned unit its exact pro-rata share of taxable value and GST', () => {
+    const product = (price, gstRate) => ({ id: `p${price}`, price, gstRate, category: 'clothing', showroomId: 'fashion-zone', showroom: 'Fashion Zone' });
+    const bill = buildBill([{ itemId: 'a', product: product(500, 18), quantity: 3 }]); // 1500 + 270 = 1770
+    const note = buildCreditNote(bill.items, [{ itemId: 'a', quantity: 1 }]);
+    assert.equal(note.summary.subtotal, 500);
+    assert.equal(note.summary.totalTax, 90);
+    assert.equal(note.summary.grandTotal, 590);
+    assert.equal(note.items[0].originalQuantity, 3);
+    const full = buildCreditNote(bill.items, [{ itemId: 'a', quantity: 3 }]);
+    assert.equal(full.summary.grandTotal, bill.summary.grandTotal);
+  });
+
+  it('treats redeemed points like a voucher: GST unchanged, amount due reduced', () => {
+    const product = { id: 'x', price: 1000, gstRate: 18, category: 'clothing', showroomId: 'fashion-zone', showroom: 'Fashion Zone' };
+    const bill = buildBill([{ itemId: 'a', product, quantity: 1 }], { pointsRedeemed: 200 });
+    assert.equal(bill.summary.grandTotal, 1180);
+    assert.equal(bill.summary.totalTax, 180);
+    assert.equal(bill.summary.pointsValue, 200);
+    assert.equal(bill.summary.amountDue, 980);
+    assert.equal(bill.amountPaise, 98000);
+  });
+});
+
+describe('FlashCart points', () => {
+  it('earns points on paid bills, caps redemption at half the bill and reduces the gateway order', async () => {
+    const { token, sid } = await t.customer('9000000050');
+    const cart0 = (await t.call('GET', `/api/cart/${sid}`, undefined, token)).body;
+    assert.deepEqual({ balance: cart0.loyalty.balance, max: cart0.loyalty.maxRedeemable }, { balance: 0, max: 0 });
+
+    // Earn: ₹4,500-ish of clothing → 1 point per ₹50 paid.
+    await t.call('POST', `/api/cart/${sid}/add`, { barcode: 'FZ-JEANS', quantity: 3 }, token); // 3 × 1416 = 4248
+    const order = await t.call('POST', '/api/razorpay/orders', { sessionId: sid }, token);
+    const pay = { sessionId: sid, razorpay_order_id: order.body.orderId, razorpay_payment_id: 'pay_pts1', razorpay_signature: sign(order.body.orderId, 'pay_pts1') };
+    const receipt = await t.call('POST', '/api/razorpay/verify', pay, token);
+    assert.equal(receipt.body.summary.amountDue, 4248);
+    assert.equal(receipt.body.loyalty.pointsEarned, 84);
+    assert.equal(receipt.body.loyalty.balanceAfter, 84);
+
+    // Redeem on the next bag: ₹354 t-shirt → at most 50% = 177 points, limited by the 84 balance.
+    const { body: login } = await t.call('POST', '/api/auth/customer/login', { phone: '9000000050' });
+    const sid2 = (await t.call('POST', '/api/sessions', undefined, login.token)).body.sessionId;
+    await t.call('POST', `/api/cart/${sid2}/add`, { barcode: 'FZ-TSHIRT' }, login.token);
+    const cart = (await t.call('GET', `/api/cart/${sid2}`, undefined, login.token)).body;
+    assert.equal(cart.loyalty.balance, 84);
+    assert.equal(cart.loyalty.maxRedeemable, 84);
+
+    const tooMany = await t.call('PUT', `/api/cart/${sid2}/points`, { points: 85 }, login.token);
+    assert.equal(tooMany.body.error.code, 'POINTS_LIMIT');
+    const bad = await t.call('PUT', `/api/cart/${sid2}/points`, { points: 2.5 }, login.token);
+    assert.equal(bad.body.error.code, 'INVALID_POINTS');
+
+    const redeemed = await t.call('PUT', `/api/cart/${sid2}/points`, { points: 80 }, login.token);
+    assert.equal(redeemed.body.summary.grandTotal, 354);
+    assert.equal(redeemed.body.summary.pointsValue, 80);
+    assert.equal(redeemed.body.summary.amountDue, 274);
+    assert.equal(redeemed.body.loyalty.willEarn, 5);
+
+    const order2 = await t.call('POST', '/api/razorpay/orders', { sessionId: sid2 }, login.token);
+    assert.equal(order2.body.amount, 27400);
+    const pay2 = { sessionId: sid2, razorpay_order_id: order2.body.orderId, razorpay_payment_id: 'pay_pts2', razorpay_signature: sign(order2.body.orderId, 'pay_pts2') };
+    const receipt2 = await t.call('POST', '/api/razorpay/verify', pay2, login.token);
+    assert.equal(receipt2.body.payment.amount, 274);
+    assert.deepEqual(
+      { redeemed: receipt2.body.loyalty.pointsRedeemed, earned: receipt2.body.loyalty.pointsEarned, balance: receipt2.body.loyalty.balanceAfter },
+      { redeemed: 80, earned: 5, balance: 9 },
+    );
+
+    const summary = await t.call('GET', '/api/me/summary', undefined, login.token);
+    assert.equal(summary.body.loyalty.balance, 9);
+    assert.equal(summary.body.bills, 2);
+    assert.equal(summary.body.totalSpent, 4248 + 354);
+    assert.equal(summary.body.favouriteShowroom.showroomId, 'fashion-zone');
+    assert.equal(summary.body.byMonth.length, 6);
+    assert.deepEqual(summary.body.loyalty.history.map((h) => h.kind), ['earn', 'redeem', 'earn']);
+  });
+
+  it('spends points when a cash bill is issued and earns them only when the cash is collected', async () => {
+    const { token, sid } = await t.customer('9000000051');
+    await t.call('POST', `/api/cart/${sid}/add`, { barcode: 'TS-EARBUDS' }, token); // 2240
+    const bill = await t.call('POST', '/api/checkout/payment', { sessionId: sid, method: 'cash' }, token);
+    assert.equal(bill.body.loyalty.pointsEarned, 0);
+
+    const desk = await t.cashier();
+    if (!(await t.call('GET', '/api/pos/shift', undefined, desk)).body.shift) await t.call('POST', '/api/pos/shift/open', { openingCash: 1000 }, desk);
+    await t.call('POST', `/api/pos/bills/${bill.body.transactionId}/collect`, { cashReceived: 2500 }, desk);
+    const receipt = await t.call('GET', `/api/receipt/${bill.body.transactionId}`, undefined, token);
+    assert.equal(receipt.body.loyalty.pointsEarned, 44);
+  });
+});
+
+describe('returns & refunds', () => {
+  const setup = async (phone, lines) => {
+    const { token, sid } = await t.customer(phone);
+    for (const [barcode, quantity] of lines) await t.call('POST', `/api/cart/${sid}/add`, { barcode, quantity }, token);
+    const order = await t.call('POST', '/api/razorpay/orders', { sessionId: sid }, token);
+    const pid = `pay_ret_${phone}`;
+    const receipt = await t.call('POST', '/api/razorpay/verify', { sessionId: sid, razorpay_order_id: order.body.orderId, razorpay_payment_id: pid, razorpay_signature: sign(order.body.orderId, pid) }, token);
+    return { token, receipt: receipt.body };
+  };
+
+  it('quotes and processes a partial return: credit note, restock, points reversal and drawer', async () => {
+    const { token, receipt } = await setup('9000000060', [['FZ-SHIRT', 2], ['FD-COFFEE', 1]]); // 1180 + 84 = 1264 → 25 pts
+    const desk = await t.cashier();
+    if (!(await t.call('GET', '/api/pos/shift', undefined, desk)).body.shift) await t.call('POST', '/api/pos/shift/open', { openingCash: 5000 }, desk);
+    const before = (await t.call('GET', '/api/pos/shift', undefined, desk)).body.shift;
+    const stockBefore = t.store.findProductByCode('FZ-SHIRT').stock;
+
+    const found = await t.call('POST', '/api/pos/lookup', { code: receipt.transactionId }, desk);
+    assert.equal(found.body.bill.returnable, true);
+    const shirt = found.body.bill.items.find((i) => i.name === 'Blue Casual Shirt');
+    const coffee = found.body.bill.items.find((i) => i.name === 'Cappuccino');
+    assert.equal(shirt.returnableQuantity, 2);
+    assert.equal(coffee.nonReturnable, true);
+
+    const food = await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns/quote`, { items: [{ itemId: coffee.itemId, quantity: 1 }] }, desk);
+    assert.equal(food.body.error.code, 'NOT_RETURNABLE');
+    const tooMany = await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns/quote`, { items: [{ itemId: shirt.itemId, quantity: 3 }] }, desk);
+    assert.equal(tooMany.body.error.code, 'RETURN_EXCEEDS');
+    const wrongMethod = await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns/quote`, { items: [{ itemId: shirt.itemId, quantity: 1 }], method: 'upi' }, desk);
+    assert.equal(wrongMethod.body.error.code, 'INVALID_METHOD');
+
+    const quote = await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns/quote`, { items: [{ itemId: shirt.itemId, quantity: 1 }], method: 'cash', reason: 'Wrong size / fit' }, desk);
+    assert.equal(quote.status, 200);
+    assert.equal(quote.body.quote.summary.grandTotal, 590);
+    assert.equal(quote.body.quote.summary.refundAmount, 590);
+    assert.equal(quote.body.quote.summary.pointsReversed, 12); // 25 earned × 590/1264
+    assert.equal(quote.body.quote.refundStatusAfter, 'partial');
+    assert.equal(t.store.findProductByCode('FZ-SHIRT').stock, stockBefore); // quote changes nothing
+
+    const done = await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns`, { items: [{ itemId: shirt.itemId, quantity: 1 }], method: 'cash', reason: 'Wrong size / fit' }, desk);
+    assert.equal(done.status, 201);
+    assert.match(done.body.creditNote.creditNoteNumber, /^FC\/CN\/\d{4}\/\d{6}$/);
+    assert.equal(done.body.creditNote.summary.refundAmount, 590);
+    assert.equal(done.body.creditNote.taxBreakdown[0].cgst, 45);
+    assert.equal(done.body.creditNote.loyalty.balanceAfter, 25 - 12);
+    assert.equal(done.body.bill.refundStatus, 'partial');
+    assert.equal(done.body.bill.items.find((i) => i.itemId === shirt.itemId).returnableQuantity, 1);
+    assert.equal(t.store.findProductByCode('FZ-SHIRT').stock, stockBefore + 1);
+    assert.equal(done.body.drawer.cashRefunded, 590);
+    assert.equal(done.body.drawer.cashInDrawer, Math.round((before.cashInDrawer - 590) * 100) / 100);
+    assert.equal(done.body.drawer.refundsIssued, before.refundsIssued + 1);
+
+    // Customer sees it on the receipt and can open the credit note; a stranger can't.
+    const after = await t.call('GET', `/api/receipt/${receipt.transactionId}`, undefined, token);
+    assert.equal(after.body.refundStatus, 'partial');
+    assert.equal(after.body.refunds[0].amount, 590);
+    assert.equal(after.body.items.find((i) => i.itemId === shirt.itemId).returnedQuantity, 1);
+    const note = await t.call('GET', `/api/credit-notes/${done.body.creditNote.id}`, undefined, token);
+    assert.equal(note.body.invoiceNumber, receipt.invoiceNumber);
+    const stranger = await t.customer('9000000061');
+    assert.equal((await t.call('GET', `/api/credit-notes/${done.body.creditNote.id}`, undefined, stranger.token)).status, 404);
+
+    // Returning the last shirt completes the return.
+    const rest = await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns`, { items: [{ itemId: shirt.itemId, quantity: 1 }], method: 'original' }, desk);
+    assert.equal(rest.body.bill.refundStatus, 'full');
+    assert.equal(rest.body.creditNote.gateway.status, 'processed');
+    assert.equal((await t.call('POST', `/api/pos/bills/${receipt.transactionId}/returns`, { items: [{ itemId: shirt.itemId, quantity: 1 }] }, desk)).body.error.code, 'RETURN_EXCEEDS');
+  });
+
+  it('credits redeemed points back instead of cash, and refuses unpaid bills', async () => {
+    // Earn first.
+    const first = await setup('9000000062', [['FZ-JEANS', 2]]); // 2832 → 56 pts
+    assert.equal(first.receipt.loyalty.pointsEarned, 56);
+    const { body: login } = await t.call('POST', '/api/auth/customer/login', { phone: '9000000062' });
+    const sid = (await t.call('POST', '/api/sessions', undefined, login.token)).body.sessionId;
+    await t.call('POST', `/api/cart/${sid}/add`, { barcode: 'FZ-TSHIRT', quantity: 2 }, login.token); // 708
+    await t.call('PUT', `/api/cart/${sid}/points`, { points: 50 }, login.token);
+    const order = await t.call('POST', '/api/razorpay/orders', { sessionId: sid }, login.token);
+    assert.equal(order.body.amount, 65800);
+    const paid = await t.call('POST', '/api/razorpay/verify', { sessionId: sid, razorpay_order_id: order.body.orderId, razorpay_payment_id: 'pay_cb', razorpay_signature: sign(order.body.orderId, 'pay_cb') }, login.token);
+
+    const desk = await t.cashier();
+    if (!(await t.call('GET', '/api/pos/shift', undefined, desk)).body.shift) await t.call('POST', '/api/pos/shift/open', { openingCash: 5000 }, desk);
+    const item = paid.body.items[0];
+    const quote = await t.call('POST', `/api/pos/bills/${paid.body.transactionId}/returns/quote`, { items: [{ itemId: item.itemId, quantity: 1 }], method: 'cash' }, desk);
+    assert.equal(quote.status, 200, JSON.stringify(quote.body));
+    assert.equal(quote.body.quote.summary.grandTotal, 354);
+    assert.equal(quote.body.quote.summary.pointsReturned, 25); // half the 50 redeemed
+    assert.equal(quote.body.quote.summary.refundAmount, 329);
+
+    // A cash refund can't exceed what's in the drawer.
+    const { hashPassword } = await import('../src/lib/auth.js');
+    t.store.saveCashier({ email: 'ravi@test.in', name: 'Ravi', passwordHash: await hashPassword('small-float-pass') });
+    const ravi = (await t.call('POST', '/api/auth/cashier/login', { email: 'ravi@test.in', password: 'small-float-pass' })).body.token;
+    await t.call('POST', '/api/pos/shift/open', { openingCash: 100 }, ravi);
+    const short = await t.call('POST', `/api/pos/bills/${paid.body.transactionId}/returns`, { items: [{ itemId: item.itemId, quantity: 1 }], method: 'cash' }, ravi);
+    assert.equal(short.body.error.code, 'INSUFFICIENT_DRAWER');
+    assert.equal(short.body.error.details.cashInDrawer, 100);
+    await t.call('POST', '/api/pos/shift/close', {}, ravi);
+
+    // Unpaid cash bills can't be refunded.
+    const { token, sid: sid3 } = await t.customer('9000000063');
+    await t.call('POST', `/api/cart/${sid3}/add`, { barcode: 'TS-CABLE' }, token);
+    const bill = await t.call('POST', '/api/checkout/payment', { sessionId: sid3, method: 'cash' }, token);
+    const res = await t.call('POST', `/api/pos/bills/${bill.body.transactionId}/returns/quote`, { items: [{ itemId: bill.body.items[0].itemId, quantity: 1 }] }, desk);
+    assert.equal(res.body.error.code, 'NOT_PAID');
+  });
+});
+
+describe('sharing & multi-desk', () => {
+  it('opens a receipt from its share link without signing in, but not with a forged token', async () => {
+    const { token, sid } = await t.customer('9000000070');
+    await t.call('POST', `/api/cart/${sid}/add`, { barcode: 'TS-CHARGER' }, token);
+    const bill = await t.call('POST', '/api/checkout/payment', { sessionId: sid, method: 'cash' }, token);
+    const path = bill.body.sharePath;
+    assert.match(path, /^\/receipt\/TX-[A-Z0-9]{8}\?s=[A-Za-z0-9_-]{22}$/);
+    const shareToken = path.split('?s=')[1];
+
+    assert.equal((await t.call('GET', `/api/receipt/${bill.body.transactionId}`)).status, 401);
+    const shared = await t.call('GET', `/api/receipt/${bill.body.transactionId}?s=${shareToken}`);
+    assert.equal(shared.status, 200);
+    assert.equal(shared.body.invoiceNumber, bill.body.invoiceNumber);
+    assert.equal((await t.call('GET', `/api/receipt/${bill.body.transactionId}?s=${'A'.repeat(22)}`)).status, 404);
+  });
+
+  it('shows every cashier’s drawer and offers the last closed one for handover', async () => {
+    const { hashPassword } = await import('../src/lib/auth.js');
+    t.store.saveCashier({ email: 'asha@test.in', name: 'Asha Rao', passwordHash: await hashPassword('second-desk-pass') });
+    const asha = (await t.call('POST', '/api/auth/cashier/login', { email: 'asha@test.in', password: 'second-desk-pass' })).body.token;
+    const desk = await t.cashier();
+    if (!(await t.call('GET', '/api/pos/shift', undefined, desk)).body.shift) await t.call('POST', '/api/pos/shift/open', { openingCash: 5000 }, desk);
+    const deskDrawer = (await t.call('GET', '/api/pos/shift', undefined, desk)).body.shift.cashInDrawer;
+
+    await t.call('POST', '/api/pos/shift/open', { openingCash: 1500 }, asha);
+    const drawers = await t.call('GET', '/api/pos/drawers', undefined, asha);
+    assert.equal(drawers.body.openDesks, 2);
+    const mine = drawers.body.drawers.find((d) => d.isMine);
+    assert.equal(mine.cashierName, 'Asha Rao');
+    assert.equal(mine.cashInDrawer, 1500);
+    assert.equal(drawers.body.cashOnFloor, Math.round((1500 + deskDrawer) * 100) / 100);
+
+    await t.call('POST', '/api/pos/shift/close', { countedCash: 1500 }, asha);
+    const closed = await t.call('GET', '/api/pos/shift', undefined, desk);
+    assert.equal(closed.body.shift.cashierName, CASHIER.name);
+    // The first cashier still has an open drawer, so no handover is offered to them yet.
+    assert.equal(closed.body.handover, null);
+    await t.call('POST', '/api/pos/shift/close', {}, desk);
+    const next = await t.call('GET', '/api/pos/shift', undefined, asha);
+    assert.equal(next.body.handover.cashierName, CASHIER.name);
+    assert.equal((await t.call('GET', '/api/pos/drawers', undefined, desk)).body.openDesks, 0);
   });
 });

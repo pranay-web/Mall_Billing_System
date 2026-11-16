@@ -77,10 +77,105 @@
   }
 }
 
+/* `dark:` utilities follow the theme attribute set by lib/theme.js (system / light / dark). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 @utility glass {
   background-color: rgb(255 255 255 / 0.72);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/*
+ * Dark mode. Tailwind 4 utilities read their colours from these variables, so remapping
+ * the palette once restyles every surface: `bg-white` becomes a dark card, `text-zinc-900`
+ * becomes light text, and tinted panels (emerald-50 etc.) become deep tints with light text.
+ * Printing always uses the light palette.
+ */
+@media screen {
+  :root[data-theme='dark'] {
+    --color-canvas: #0b0b0e;
+    --color-white: #18181c;
+
+    --color-zinc-50: #1f1f24;
+    --color-zinc-100: #26262c;
+    --color-zinc-200: #33333b;
+    --color-zinc-300: #45454f;
+    --color-zinc-400: #7a7a86;
+    --color-zinc-500: #9c9ca7;
+    --color-zinc-600: #b8b8c2;
+    --color-zinc-700: #d0d0d8;
+    --color-zinc-800: #e4e4ea;
+    --color-zinc-900: #f2f2f5;
+    --color-zinc-950: #000000;
+
+    --color-brand-50: #0f1d38;
+    --color-brand-100: #132a55;
+    --color-brand-200: #1a3b78;
+    --color-brand-700: #8db3ff;
+    --color-brand-800: #b3ccff;
+    --color-brand-900: #d9e6ff;
+
+    --color-emerald-50: #062b20;
+    --color-emerald-100: #0a3a2b;
+    --color-emerald-200: #115a43;
+    --color-emerald-700: #6ee7b7;
+    --color-emerald-800: #a7f3d0;
+    --color-emerald-900: #d1fae5;
+
+    --color-amber-50: #2d1f05;
+    --color-amber-100: #3d2a07;
+    --color-amber-200: #5c3f0b;
+    --color-amber-700: #fcd34d;
+    --color-amber-800: #fde68a;
+    --color-amber-900: #fef3c7;
+
+    --color-red-50: #2f0d0d;
+    --color-red-100: #431414;
+    --color-red-200: #6b1d1d;
+    --color-red-700: #fca5a5;
+    --color-red-800: #fecaca;
+    --color-red-900: #fee2e2;
+
+    --color-rose-50: #2f0b17;
+    --color-rose-100: #451021;
+    --color-rose-200: #6b1a33;
+    --color-rose-700: #fda4af;
+
+    --color-sky-50: #0a2334;
+    --color-sky-100: #0e3047;
+    --color-sky-200: #154a6b;
+    --color-sky-700: #7dd3fc;
+
+    --color-violet-50: #1e1238;
+    --color-violet-100: #2a1a4f;
+    --color-violet-200: #3f2a73;
+    --color-violet-700: #c4b5fd;
+
+    --color-fuchsia-50: #2e0f2c;
+    --color-fuchsia-100: #42153f;
+    --color-fuchsia-200: #641f60;
+    --color-fuchsia-700: #f0abfc;
+
+    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4), 0 1px 3px 0 rgb(0 0 0 / 0.3);
+    --shadow-lift: 0 16px 40px -16px rgb(0 0 0 / 0.7), 0 2px 6px -2px rgb(0 0 0 / 0.5);
+  }
+
+  /* Text that sits on a coloured surface (buttons, hero cards, scanner) stays white. */
+  :root[data-theme='dark'] :where([class~='text-white'], [class*='text-white/']) {
+    --color-white: #ffffff;
+  }
+  /* Deliberately dark panels (desk clock, end-of-day card, dark buttons) stay dark. */
+  :root[data-theme='dark'] :where([class~='bg-zinc-900'], [class~='bg-zinc-800'], [class~='from-zinc-900']) {
+    --color-zinc-900: #26262c;
+    --color-zinc-800: #2e2e35;
+  }
+  :root[data-theme='dark'] :where([class~='to-brand-700'], [class~='from-brand-700']) {
+    --color-brand-700: #0046b3;
+  }
+  :root[data-theme='dark'] .glass {
+    background-color: rgb(24 24 28 / 0.78);
+  }
 }
 
 @utility pb-safe {
@@ -91,6 +186,9 @@
   html {
     -webkit-tap-highlight-color: transparent;
     color-scheme: light;
+  }
+  html[data-theme='dark'] {
+    color-scheme: dark;
   }
   body {
     @apply bg-canvas font-sans text-zinc-900 antialiased;

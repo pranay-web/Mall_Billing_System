@@ -1,0 +1,12 @@
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,shapes.geometric,shapes.misc,shapes.multipart}
+\newcommand{\dt}{\,\textperiodcentered\,}
+\tikzset{
+  arr/.style={-{Latex[length=2.2mm]},line width=0.6pt},
+  darr/.style={{Latex[length=2.2mm]}-{Latex[length=2.2mm]},line width=0.6pt},
+  dashedarr/.style={-{Latex[length=2.2mm,open]},line width=0.6pt,dashed},
+  retarr/.style={-{Latex[length=2.2mm]},line width=0.6pt,dashed},
+  lbl/.style={font=\footnotesize\itshape},
+}

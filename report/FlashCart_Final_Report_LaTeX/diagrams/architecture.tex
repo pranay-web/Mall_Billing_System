@@ -1,0 +1,35 @@
+\documentclass[tikz,border=6pt]{standalone}
+\input{preamble}
+\begin{document}
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw,rounded corners=4pt,align=center,inner sep=6pt,minimum height=1.1cm,line width=0.6pt},
+  bold/.style={box,font=\small\bfseries},
+  tier/.style={draw,rounded corners=6pt,inner sep=10pt,line width=0.7pt},
+  node distance=6mm and 10mm]
+\node[bold,minimum width=4.6cm] (cust) {Customer app (React PWA)\\[1pt]\mdseries\footnotesize scan\dt bag\dt points\dt account\\\mdseries\footnotesize receipts\dt share\dt dark mode};
+\node[bold,minimum width=4.6cm,below=of cust] (bar) {Barcode engine\\(ZXing WASM / native)};
+\node[bold,minimum width=4.6cm,below=of bar] (sw) {Service worker + manifest\\[1pt]\mdseries\footnotesize caches the app shell\dt installable};
+\node[bold,minimum width=4.6cm,below=of sw] (desk) {Cash desk (React SPA)\\[1pt]\mdseries\footnotesize collect cash\dt returns\dt all drawers};
+\node[tier,fit=(cust)(bar)(sw)(desk),label={[font=\bfseries]above:Browser}] (tierA) {};
+
+\node[bold,minimum width=5.2cm,right=18mm of cust] (api) {Express 5 REST API\\/api/*};
+\node[box,minimum width=5.2cm,below=of api] (svc) {Services: auth\dt sessions\dt pricing\\checkout\dt cashDesk\dt \textbf{loyalty}\\\textbf{returns (credit notes)}\dt \textbf{insights}};
+\node[box,minimum width=5.2cm,below=of svc] (sec) {Security: signed tokens\dt scrypt\\HMAC (payments, \textbf{share links})\\rate limits\dt role guards};
+\node[tier,fit=(api)(svc)(sec),label={[font=\bfseries]above:Node.js server}] (tierB) {};
+
+\node[bold,minimum width=4.4cm,right=18mm of api,yshift=-4mm] (db) {SQLite (node:sqlite)\\[1pt]\mdseries\footnotesize customers (points)\dt cashiers\\\mdseries\footnotesize products\dt transactions\\\mdseries\footnotesize cash\_shifts\dt \textbf{refunds}\\\mdseries\footnotesize \textbf{loyalty\_ledger}};
+\node[bold,minimum width=4.4cm,below=12mm of db] (rzp) {Razorpay Gateway\\[1pt]\mdseries\footnotesize orders\dt payments\dt refunds};
+\node[bold,minimum width=4.4cm,below=12mm of rzp] (share) {Share targets\\[1pt]\mdseries\footnotesize WhatsApp\dt Web Share\dt PDF};
+\node[tier,fit=(db)(rzp)(share),label={[font=\bfseries]above:Data \& external services}] (tierC) {};
+
+\draw[darr] (cust.east) -- node[lbl,above]{HTTPS / JSON} (cust.east -| api.west);
+\draw[arr] (bar.north) -- node[lbl,right]{EAN-13} (cust.south);
+\draw[darr] (desk.east) -- ++(7mm,0) |- node[lbl,pos=0.25,right]{Bearer token} ($(api.west)+(0,-3mm)$);
+\draw[line width=0.6pt] (api) -- (svc);
+\draw[line width=0.6pt] (svc) -- (sec);
+\draw[darr] (api.east) -- node[lbl,above]{SQL} (api.east -| db.west);
+\draw[darr] (sec.east) -- node[lbl,above,pos=0.6]{orders / refunds} (sec.east -| rzp.west);
+\draw[arr] (cust.west) -- ++(-6mm,0) |- ($(tierA.south)+(0,-5mm)$) -| node[lbl,pos=0.25,below]{signed receipt link (read-only, no sign-in)} (share.south);
+\end{tikzpicture}
+\end{document}

@@ -1,14 +1,14 @@
-import { Sun } from 'lucide-react';
+import { ArrowRightLeft, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { Card, Eyebrow } from '../../components/ui/misc.jsx';
 import { api } from '../../lib/api.js';
-import { formatDateTime, formatINR } from '../../lib/format.js';
+import { formatDateTime, formatINR, formatTime } from '../../lib/format.js';
 import { AmountInput } from './AmountInput.jsx';
 
 /** Opens the cashier's day by recording how much cash is already in the drawer. */
-export function StartDay({ cashier, lastClosed, onStarted }) {
+export function StartDay({ cashier, lastClosed, handover, onStarted }) {
   const [opening, setOpening] = useState(lastClosed?.countedCash != null ? String(lastClosed.countedCash) : '');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,6 +58,26 @@ export function StartDay({ cashier, lastClosed, onStarted }) {
         </Card>
       </form>
 
+      <div className="space-y-5">
+      {handover && (
+        <Card className="p-5 animate-fade-up">
+          <Eyebrow>Shift handover</Eyebrow>
+          <p className="mt-1 text-sm text-zinc-700">
+            <span className="font-semibold text-zinc-900">{handover.cashierName}</span> closed their drawer at {formatTime(handover.closedAt)}
+            {handover.countedCash != null ? ` and counted ${formatINR(handover.countedCash)}` : ` with ${formatINR(handover.cashInDrawer)} expected`}.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            icon={ArrowRightLeft}
+            className="mt-3"
+            onClick={() => setOpening(String(handover.countedCash ?? handover.cashInDrawer))}
+          >
+            Take over that drawer ({formatINR(handover.countedCash ?? handover.cashInDrawer, { whole: true })})
+          </Button>
+        </Card>
+      )}
       {lastClosed && (
         <Card className="p-5 animate-fade-up">
           <Eyebrow>Last closing</Eyebrow>
@@ -72,6 +92,7 @@ export function StartDay({ cashier, lastClosed, onStarted }) {
           </dl>
         </Card>
       )}
+      </div>
     </div>
   );
 }

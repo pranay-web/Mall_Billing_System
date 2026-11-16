@@ -11,6 +11,8 @@ import { createAuthService } from './services/auth.js';
 import { createCashDeskService } from './services/cashDesk.js';
 import { createCheckoutService } from './services/checkout.js';
 import { createGateway } from './services/gateway.js';
+import { createInsightsService } from './services/insights.js';
+import { createLoyaltyService } from './services/loyalty.js';
 import { createSessionService } from './services/sessions.js';
 import { createSqliteStore } from './store/sqliteStore.js';
 
@@ -26,9 +28,11 @@ export const createApp = async ({ config = defaultConfig, gateway = createGatewa
   const store = createSqliteStore({ db });
 
   const auth = createAuthService({ store, config });
-  const sessions = createSessionService({ store, config });
-  const checkout = createCheckoutService({ store, config, sessions, gateway });
-  const cashDesk = createCashDeskService({ store, checkout });
+  const loyalty = createLoyaltyService({ store, config });
+  const sessions = createSessionService({ store, config, loyalty });
+  const checkout = createCheckoutService({ store, config, sessions, gateway, loyalty });
+  const cashDesk = createCashDeskService({ store, config, checkout, loyalty });
+  const insights = createInsightsService({ store, loyalty });
 
   const app = express();
   app.disable('x-powered-by');
@@ -40,7 +44,7 @@ export const createApp = async ({ config = defaultConfig, gateway = createGatewa
   if (logRequests) app.use(requestLogger);
   app.use('/api', authenticate({ secret: config.authSecret, resolve: auth.resolve }));
 
-  app.use('/api', createApiRouter({ config, store, auth, sessions, checkout, cashDesk }));
+  app.use('/api', createApiRouter({ config, store, auth, sessions, checkout, cashDesk, insights }));
   app.use('/api', apiNotFound);
 
   // Serve the production frontend build (single-port deploys) when it exists.

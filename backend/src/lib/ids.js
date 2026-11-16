@@ -12,6 +12,9 @@ export const newSessionId = () => `FC-${randomCode(6)}`;
 /** Bill / transaction handle, e.g. `TX-9H4K2W7Q`. */
 export const newTransactionId = () => `TX-${randomCode(8)}`;
 
+/** Credit note handle for a return, e.g. `CN-4M7PQ2XV`. */
+export const newCreditNoteId = () => `CN-${randomCode(8)}`;
+
 /** Indian financial year label (April–March), e.g. `2627` for FY 2026-27. */
 export const financialYear = (date = new Date()) => {
   const start = date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;

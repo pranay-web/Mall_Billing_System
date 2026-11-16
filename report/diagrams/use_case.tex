@@ -1,0 +1,69 @@
+\documentclass[tikz,border=6pt]{standalone}
+\input{preamble}
+\newcommand{\actor}[3]{% name, x, y
+  \draw[line width=0.7pt] (#2,#3+0.75) circle (0.3);
+  \draw[line width=0.7pt] (#2,#3+0.45) -- (#2,#3-0.35) (#2-0.5,#3+0.2) -- (#2+0.5,#3+0.2) (#2,#3-0.35) -- (#2-0.45,#3-1) (#2,#3-0.35) -- (#2+0.45,#3-1);
+  \node[font=\small\bfseries,below=1.1cm] at (#2,#3) {#1};}
+\begin{document}
+\begin{tikzpicture}[
+  uc/.style={ellipse,draw,align=center,minimum width=3.5cm,minimum height=1.05cm,inner sep=1pt,font=\footnotesize\bfseries,line width=0.6pt},
+  assoc/.style={line width=0.55pt},
+  ext/.style={dashedarr},
+  inc/.style={dashedarr},
+  st/.style={font=\scriptsize\itshape}]
+\draw[line width=0.8pt] (-2.1,-2.1) rectangle (17.6,13.1);
+\node[font=\bfseries] at (7.75,12.6) {FlashCart --- Unified Checkout System};
+% customer use cases
+\node[uc] (c1) at (0,11.6) {Sign in with\\mobile number};
+\node[uc] (c2) at (0,10.3) {Scan product\\barcode};
+\node[uc] (c3) at (0,9.0) {Browse / search\\catalog};
+\node[uc] (c4) at (0,7.7) {Order again\\(past food items)};
+\node[uc] (c5) at (0,6.4) {Update / remove\\bag items};
+\node[uc] (c6) at (0,5.1) {View bag \&\\GST breakdown};
+\node[uc] (c7) at (0,3.8) {Checkout};
+\node[uc] (c8) at (0,2.5) {View receipts \&\\credit notes};
+\node[uc] (c9) at (0,1.2) {Share receipt\\(link / WhatsApp / PDF)};
+\node[uc] (c10) at (0,-0.1) {View spend summary\\\& points history};
+\node[uc] (c11) at (0,-1.4) {Install app /\\dark mode};
+% customer secondary
+\node[uc] (add) at (4.7,9.0) {Add item to\\unified bag};
+\node[uc] (pts) at (4.7,5.0) {Redeem FlashCart\\points (up to 50\%)};
+\node[uc] (cash) at (4.7,3.6) {Pay cash at\\the desk};
+\node[uc] (online) at (4.7,2.2) {Pay online\\(UPI / Card)};
+\node[uc] (verify) at (4.7,0.6) {Verify payment\\signature};
+% cashier use cases
+\node[uc] (k1) at (15.2,11.6) {Sign in with\\email + password};
+\node[uc] (k2) at (15.2,10.2) {Start day\\(opening cash)};
+\node[uc] (k3) at (15.2,8.8) {Find bill\\(barcode / phone)};
+\node[uc] (k4) at (15.2,7.4) {Collect cash \&\\return change};
+\node[uc] (k5) at (15.2,6.0) {Process return\\\& refund};
+\node[uc] (k6) at (15.2,4.6) {View all desks'\\drawers};
+\node[uc] (k7) at (15.2,3.2) {Close day \&\\cash report};
+% cashier secondary
+\node[uc] (hand) at (10.6,10.2) {Take over a\\colleague's drawer};
+\node[uc] (cn) at (10.6,7.3) {Issue GST\\credit note};
+\node[uc] (restock) at (10.6,6.0) {Restock\\returned items};
+\node[uc] (refundsrc) at (10.6,4.7) {Refund to\\card / UPI};
+% actors
+\actor{User 1}{-4.0}{5.1}
+\actor{User 2}{19.2}{7.4}
+\foreach \n in {c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11} \draw[assoc] (-4.0,5.1) -- (\n.west);
+\foreach \n in {k1,k2,k3,k4,k5,k6,k7} \draw[assoc] (19.2,7.4) -- (\n.east);
+% include / extend
+\draw[inc] (c2.east) -- node[st,above,sloped,pos=0.4]{\guillemotleft include\guillemotright} (add.west);
+\draw[inc] (c3.east) -- node[st,above]{\guillemotleft include\guillemotright} (add.west);
+\draw[inc] (c4.east) -- node[st,below,sloped,pos=0.4]{\guillemotleft include\guillemotright} (add.west);
+\draw[ext] (pts.west) -- node[st,above,sloped,pos=0.55]{\guillemotleft extend\guillemotright} (c7.east);
+\draw[ext] (cash.west) -- node[st,below,pos=0.55]{\guillemotleft extend\guillemotright} (c7.east);
+\draw[ext] (online.west) -- node[st,below,sloped,pos=0.55]{\guillemotleft extend\guillemotright} (c7.east);
+\draw[inc] (online.south) -- node[st,right]{\guillemotleft include\guillemotright} (verify.north);
+\draw[ext] (hand.east) -- node[st,above,pos=0.5]{\guillemotleft extend\guillemotright} (k2.west);
+\draw[inc] (k5.west) -- node[st,above,sloped,pos=0.55]{\guillemotleft include\guillemotright} (cn.east);
+\draw[inc] (k5.west) -- node[st,above,pos=0.5]{\guillemotleft include\guillemotright} (restock.east);
+\draw[ext] (refundsrc.east) -- node[st,below,sloped,pos=0.45]{\guillemotleft extend\guillemotright} (k5.west);
+% external system
+\node[draw,rounded corners=3pt,align=center,inner sep=6pt,line width=0.6pt] (rzp) at (7.4,-3.4) {\scriptsize\guillemotleft external\guillemotright\\\small\bfseries Razorpay};
+\draw[assoc] (online.east) -| (rzp.north);
+\draw[assoc] (refundsrc.south) |- (rzp.east);
+\end{tikzpicture}
+\end{document}

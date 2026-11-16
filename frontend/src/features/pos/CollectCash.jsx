@@ -5,8 +5,9 @@ import { Button } from '../../components/ui/Button.jsx';
 import { Card, Eyebrow } from '../../components/ui/misc.jsx';
 import { api } from '../../lib/api.js';
 import { scanFeedback } from '../../lib/feedback.js';
-import { changeBreakdown, formatINR, formatTime, paymentMethodLabel, pluralize } from '../../lib/format.js';
+import { changeBreakdown, formatINR, formatTime, pluralize } from '../../lib/format.js';
 import { AmountInput } from './AmountInput.jsx';
+import { ReturnItems } from './ReturnItems.jsx';
 
 /** Suggested "customer handed over" amounts: exact, then the next round notes. */
 const quickAmounts = (due) => {
@@ -15,7 +16,7 @@ const quickAmounts = (due) => {
 };
 
 /** The heart of the desk: amount due → cash received → change to return. */
-export function CollectCash({ bill, onCollected, onClose }) {
+export function CollectCash({ bill, drawer, onCollected, onReturned, onClose }) {
   const [received, setReceived] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -25,19 +26,9 @@ export function CollectCash({ bill, onCollected, onClose }) {
   const change = amount === null ? null : Math.round((amount - due) * 100) / 100;
   const quick = useMemo(() => quickAmounts(due), [due]);
 
+  // A paid bill at the desk means a return: nothing to collect, possibly something to refund.
   if (bill.status === 'paid') {
-    return (
-      <Card className="p-6 animate-fade-up">
-        <div className="flex items-start justify-between gap-4">
-          <BillMeta bill={bill} />
-          <CloseButton onClick={onClose} />
-        </div>
-        <Alert tone="info" title="Nothing to collect" className="mt-5">
-          This bill is already paid ({paymentMethodLabel({ method: bill.paymentMethod })}
-          {bill.collection ? ` at ${formatTime(bill.collection.collectedAt)}` : ''}).
-        </Alert>
-      </Card>
-    );
+    return <ReturnItems key={bill.transactionId} bill={bill} drawer={drawer} onReturned={onReturned} onClose={onClose} />;
   }
 
   const submit = async (e) => {

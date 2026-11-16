@@ -1,4 +1,4 @@
-import { ArrowLeft, Banknote, Clock3, Printer, ReceiptText, RefreshCw, ScanLine } from 'lucide-react';
+import { ArrowLeft, Banknote, Clock3, Link2, LogIn, MessageCircle, Printer, ReceiptText, RefreshCw, RotateCcw, ScanLine, Share2, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppHeader } from '../../components/AppHeader.jsx';
 import { Barcode } from '../../components/Barcode.jsx';
@@ -6,21 +6,24 @@ import { TransactionStatusBadge } from '../../components/ui/Badge.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { EmptyState, Eyebrow, Skeleton } from '../../components/ui/misc.jsx';
 import { useToast } from '../../components/ui/Toast.jsx';
+import { useShop } from '../../context/ShopContext.jsx';
 import { api } from '../../lib/api.js';
 import { formatDateTime, formatINR, formatPhone, formatSignedINR, formatTime, paymentMethodLabel, pluralize } from '../../lib/format.js';
-import { navigate } from '../../lib/router.js';
+import { absoluteUrl, navigate } from '../../lib/router.js';
 
 const POLL_MS = 4000;
 
-export default function ReceiptView({ transactionId }) {
+export default function ReceiptView({ transactionId, shareToken = null }) {
+  const { customer } = useShop();
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const toast = useToast();
   const lastStatus = useRef(null);
+  const shared = Boolean(shareToken);
 
   const load = useCallback(async () => {
     try {
-      const next = await api.receipt(transactionId);
+      const next = await api.receipt(transactionId, { share: shareToken });
       if (lastStatus.current === 'awaiting_payment' && next.status === 'paid') {
         toast({ tone: 'success', title: 'Payment received at the cash desk', description: 'Thank you for shopping with us!' });
       }
@@ -30,7 +33,7 @@ export default function ReceiptView({ transactionId }) {
     } catch (err) {
       setError(err);
     }
-  }, [transactionId, toast]);
+  }, [transactionId, shareToken, toast]);
 
   useEffect(() => {
     load();
@@ -43,15 +46,47 @@ export default function ReceiptView({ transactionId }) {
     return () => clearInterval(t);
   }, [receipt?.status, load]);
 
+  const shareUrl = receipt ? absoluteUrl(receipt.sharePath) : '';
+  const shareText = receipt ? `FlashCart receipt ${receipt.invoiceNumber} · ${formatINR(receipt.summary.grandTotal)} at ${receipt.mall.name}` : '';
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast({ tone: 'success', title: 'Receipt link copied', description: 'Anyone with the link can view this bill.' });
+    } catch {
+      toast({ tone: 'error', title: "Couldn't copy", description: shareUrl });
+    }
+  };
+
+  const share = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'FlashCart receipt', text: shareText, url: shareUrl });
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+      }
+    }
+    copyLink();
+  };
+
+  const whatsapp = () => window.open(`https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`, '_blank', 'noopener');
+
   return (
     <div className="min-h-dvh">
       <AppHeader
-        suffix="Receipt"
+        suffix={shared ? 'Shared receipt' : 'Receipt'}
         maxWidth="max-w-3xl"
         right={
-          <Button variant="secondary" size="sm" icon={ScanLine} onClick={() => navigate('/shop')}>
-            New bag
-          </Button>
+          shared && !customer ? (
+            <Button variant="secondary" size="sm" icon={LogIn} onClick={() => navigate('/login')}>
+              Shop with FlashCart
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" icon={ScanLine} onClick={() => navigate('/shop')}>
+              New bag
+            </Button>
+          )
         }
       />
 
@@ -60,7 +95,13 @@ export default function ReceiptView({ transactionId }) {
           <EmptyState
             icon={ReceiptText}
             title={error.code === 'RECEIPT_NOT_FOUND' ? 'Receipt not found' : "Couldn't load receipt"}
-            description={error.code === 'RECEIPT_NOT_FOUND' ? 'This bill doesn’t exist, or it belongs to a different phone number.' : error.message}
+            description={
+              error.code === 'RECEIPT_NOT_FOUND'
+                ? shared
+                  ? 'This share link is not valid any more.'
+                  : 'This bill doesn’t exist, or it belongs to a different phone number.'
+                : error.message
+            }
             action={
               <div className="flex gap-2">
                 <Button variant="secondary" icon={ArrowLeft} onClick={() => navigate('/shop')}>
@@ -78,15 +119,31 @@ export default function ReceiptView({ transactionId }) {
           <Skeleton className="h-[760px] rounded-3xl" />
         ) : (
           <>
+            {shared && (
+              <p className="mb-4 rounded-xl bg-brand-50 px-4 py-2.5 text-center text-[13px] text-brand-900 ring-1 ring-inset ring-brand-200/70 print:hidden">
+                You’re viewing a receipt shared from FlashCart · {receipt.mall.name}
+              </p>
+            )}
             <Ticket receipt={receipt} />
             <div className="mt-5 grid grid-cols-2 gap-2.5 print:hidden">
-              <Button variant="dark" size="lg" icon={Printer} onClick={() => window.print()}>
+              <Button variant="dark" size="lg" icon={Share2} onClick={share}>
+                Share
+              </Button>
+              <Button variant="secondary" size="lg" icon={MessageCircle} onClick={whatsapp}>
+                WhatsApp
+              </Button>
+              <Button variant="secondary" size="lg" icon={Link2} onClick={copyLink}>
+                Copy link
+              </Button>
+              <Button variant="secondary" size="lg" icon={Printer} onClick={() => window.print()}>
                 Print / PDF
               </Button>
-              <Button variant="secondary" size="lg" icon={ScanLine} onClick={() => navigate('/shop')}>
-                Back to shop
-              </Button>
             </div>
+            {!shared && (
+              <button onClick={() => navigate('/shop')} className="mt-4 flex w-full items-center justify-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-900 print:hidden">
+                <ScanLine className="size-4" /> Back to shop
+              </button>
+            )}
           </>
         )}
       </main>
@@ -95,28 +152,40 @@ export default function ReceiptView({ transactionId }) {
 }
 
 export function Ticket({ receipt }) {
-  const { status, summary, payment, mall } = receipt;
+  const { status, summary, payment, mall, loyalty, refunds = [], refundStatus = 'none' } = receipt;
   const awaiting = status === 'awaiting_payment';
   const cash = payment.collection;
+  const pointsUsed = summary.pointsValue ?? 0;
+  const amountDue = summary.amountDue ?? summary.grandTotal;
+  const refunded = refunds.reduce((acc, r) => acc + r.amount + (r.pointsReturned ?? 0), 0);
 
   return (
     <article className="overflow-hidden rounded-[28px] border border-zinc-200/80 bg-white shadow-lift animate-fade-up print:rounded-none print:border-0 print:shadow-none">
       {/* Hero */}
       <div className="flex flex-col items-center px-6 pb-6 pt-8 text-center">
         {awaiting ? <PendingMark /> : <SuccessMark key="paid" />}
-        <h1 className="mt-5 text-xl font-semibold text-zinc-900">{awaiting ? 'Bill ready — pay at the cash desk' : 'Payment successful'}</h1>
+        <h1 className="mt-5 text-xl font-semibold text-zinc-900">
+          {awaiting ? 'Bill ready — pay at the cash desk' : refundStatus === 'full' ? 'Fully refunded' : 'Payment successful'}
+        </h1>
         <p className="mt-1 text-sm text-zinc-500">
           {mall.name} · {pluralize(summary.units, 'item')} · {pluralize(receipt.groups.length, 'store')}
         </p>
         <p className="mt-4 text-[40px] font-semibold leading-none tracking-tight text-zinc-900 tabular-nums">{formatINR(summary.grandTotal)}</p>
-        <TransactionStatusBadge status={status} className="mt-4" />
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <TransactionStatusBadge status={status} refundStatus={refundStatus} />
+          {loyalty?.pointsEarned > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200/70">
+              <Sparkles className="size-3 text-amber-500" /> +{loyalty.pointsEarned} points earned
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Cash bill: barcode for the desk scanner */}
       {awaiting && (
         <section className="mx-6 mb-6 rounded-2xl bg-amber-50 p-4 ring-1 ring-inset ring-amber-200 print:bg-white">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
-            <Banknote className="size-4" /> Pay {formatINR(summary.grandTotal)} in cash
+            <Banknote className="size-4" /> Pay {formatINR(amountDue)} in cash
           </p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-amber-900/75">
             Show this barcode at the cash desk, or tell the cashier your phone number. They’ll tell you exactly how much change you get back.
@@ -124,6 +193,27 @@ export function Ticket({ receipt }) {
           <div className="mt-3 rounded-xl bg-white px-4 py-3 ring-1 ring-amber-200">
             <Barcode value={receipt.billCode} format="CODE128" height={64} barWidth={2} />
           </div>
+        </section>
+      )}
+
+      {refunds.length > 0 && (
+        <section className="mx-6 mb-6 rounded-2xl bg-brand-50/70 p-4 ring-1 ring-inset ring-brand-200/70 print:bg-white">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-900">
+            <RotateCcw className="size-4" /> {formatINR(refunded)} refunded on {pluralize(refunds.length, 'credit note')}
+          </p>
+          <ul className="mt-2 space-y-1.5 text-[12.5px] text-brand-900/80">
+            {refunds.map((r) => (
+              <li key={r.creditNoteId} className="flex items-center justify-between gap-3">
+                <button onClick={() => navigate(`/credit/${r.creditNoteId}`)} className="font-mono font-semibold underline-offset-2 hover:underline print:no-underline">
+                  {r.creditNoteNumber}
+                </button>
+                <span>
+                  {pluralize(r.units, 'item')} · {formatINR(r.amount)} {r.method === 'cash' ? 'cash' : 'to source'}
+                  {r.pointsReturned ? ` + ${r.pointsReturned} pts` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
@@ -157,7 +247,14 @@ export function Ticket({ receipt }) {
                   {g.items.map((item) => (
                     <tr key={item.itemId} className="align-top">
                       <td className="py-1 pr-2">
-                        <p className="font-medium text-zinc-900">{item.name}</p>
+                        <p className="font-medium text-zinc-900">
+                          {item.name}
+                          {item.returnedQuantity > 0 && (
+                            <span className="ml-1.5 rounded-md bg-zinc-100 px-1.5 py-px text-[10.5px] font-semibold text-zinc-600">
+                              {item.returnedQuantity === item.quantity ? 'Returned' : `${item.returnedQuantity} of ${item.quantity} returned`}
+                            </span>
+                          )}
+                        </p>
                         <p className="text-[11px] text-zinc-400">
                           {item.quantity} × {formatINR(item.unitPrice)} · HSN {item.hsn} · GST {item.gstRate}%
                         </p>
@@ -205,9 +302,18 @@ export function Ticket({ receipt }) {
           <Line label="SGST" value={formatINR(summary.sgst)} />
           {summary.roundOff !== 0 && <Line label="Round off" value={formatSignedINR(summary.roundOff)} />}
           <div className="flex items-baseline justify-between border-t border-zinc-200 pt-2.5">
-            <dt className="text-sm font-semibold text-zinc-900">{awaiting ? 'Amount payable' : 'Amount paid'}</dt>
+            <dt className="text-sm font-semibold text-zinc-900">Invoice total</dt>
             <dd className="text-lg font-semibold text-zinc-900 tabular-nums">{formatINR(summary.grandTotal)}</dd>
           </div>
+          {pointsUsed > 0 && (
+            <>
+              <Line label={`Paid with ${summary.pointsRedeemed} FlashCart points`} value={`−${formatINR(pointsUsed)}`} />
+              <div className="flex items-baseline justify-between">
+                <dt className="text-sm font-semibold text-zinc-900">{awaiting ? 'Amount payable' : `Paid by ${paymentMethodLabel({ method: payment.method })}`}</dt>
+                <dd className="text-base font-semibold text-zinc-900 tabular-nums">{formatINR(amountDue)}</dd>
+              </div>
+            </>
+          )}
         </dl>
 
         {cash && (
@@ -233,7 +339,7 @@ export function Ticket({ receipt }) {
   );
 }
 
-const Meta = ({ label, value, mono }) => (
+export const Meta = ({ label, value, mono }) => (
   <div className="min-w-0">
     <dt className="text-[11px] font-medium text-zinc-400">{label}</dt>
     <dd className={`mt-0.5 truncate font-medium text-zinc-900 ${mono ? 'font-mono text-[12px]' : ''}`} title={value}>
@@ -242,14 +348,14 @@ const Meta = ({ label, value, mono }) => (
   </div>
 );
 
-const Line = ({ label, value }) => (
+export const Line = ({ label, value }) => (
   <div className="flex items-baseline justify-between">
     <dt className="text-zinc-500">{label}</dt>
     <dd className="text-zinc-700 tabular-nums">{value}</dd>
   </div>
 );
 
-const Perforation = () => (
+export const Perforation = () => (
   <div className="perforation" aria-hidden>
     <span />
   </div>
